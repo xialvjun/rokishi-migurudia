@@ -1,21 +1,23 @@
 import type { Env } from './roxy';
 import * as r from './roxy';
 
-export const SVG_NS = 'http://www.w3.org/2000/svg';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+enum NameSpaceUri {
+  HTML = 'http://www.w3.org/1999/xhtml',
+  SVG = 'http://www.w3.org/2000/svg',
+  MATH_ML = 'http://www.w3.org/1998/Math/MathML',
+}
 
 type DomNode = Node;
 type DomElement = Element;
 
-// const ATTRS_AFTER_CHILDREN = new Set(['selected', 'checked', 'value', 'innerHTML']);
-// const SPECIAL_KEYS = new Set(['key', 'children', ...ATTRS_AFTER_CHILDREN]);
-
-function setDOMAttribute(node: DomElement, key: string, value: any, isSvg: boolean) {
+function setDOMAttribute(node: DomElement, key: string, value: any, namespace: string) {
   if (value === true) {
     node.setAttribute(key, '');
   } else if (value === false) {
     node.removeAttribute(key);
-  } else if (isSvg) {
-    node.setAttributeNS(SVG_NS, key, value);
+  } else if (namespace) {
+    node.setAttributeNS(namespace, key, value);
   } else {
     node.setAttribute(key, value);
   }
@@ -65,20 +67,20 @@ const SPECIAL_ATTRS: Record<PropertyKey, ReturnType<typeof makeSpecialAttr>> = {
   innerHTML: makeSpecialAttr('innerHTML'),
 };
 
-export const ENV_DOM: Env<DomNode, boolean> = {
+export const ENV_DOM: Env<DomNode, string> = {
   createNode(vnode, parentState) {
-    const isSvg = !!parentState;
+    const ns = parentState || '';
     if (r.isEmpty(vnode)) {
       const node = document.createComment('');
-      return { node, state: isSvg };
+      return { node, state: ns };
     }
     if (r.isLeaf(vnode)) {
       const node = document.createTextNode(vnode + '');
-      return { node, state: isSvg };
+      return { node, state: ns };
     }
     if (r.isElement(vnode)) {
-      const node = isSvg ? document.createElementNS(SVG_NS, vnode.type) : document.createElement(vnode.type);
-      return { node, state: isSvg || vnode.type === 'svg' };
+      const node = ns ? document.createElementNS(ns, vnode.type) : document.createElement(vnode.type);
+      return { node, state: ns || (vnode.type === 'svg' ? NameSpaceUri.SVG : vnode.type === 'math' ? NameSpaceUri.MATH_ML : '') };
     }
     throw new Error('Invalid Params');
   },

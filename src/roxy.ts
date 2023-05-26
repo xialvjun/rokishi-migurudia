@@ -1,3 +1,5 @@
+import { queueMacrotask, queueMicrotask, tryCatchLog } from './tools';
+
 export type EmptyVnode = false | null | undefined | [];
 export type LeafVnode = string | number;
 export type ElementVnode = { type: string; props: { children?: Vnode }; key?: any };
@@ -6,106 +8,27 @@ export type NonEmptyArrayVnode = [Vnode, ...Vnode[]];
 export type ComponentVnode = { type: (...args: any[]) => (...args: any[]) => Vnode; props: {}; key?: any };
 export type Vnode = EnvVnode | NonEmptyArrayVnode | ComponentVnode;
 
+
 export const isEmpty = (c: any): c is EmptyVnode => c === false || c === null || c === undefined || (Array.isArray(c) && c.length === 0);
 export const isLeaf = (c: any): c is LeafVnode => typeof c === 'string' || typeof c === 'number';
 export const isElement = (c: any): c is ElementVnode => typeof c?.type === 'string';
 export const isNonEmptyArray = (c: any): c is NonEmptyArrayVnode => Array.isArray(c) && c.length > 0;
 export const isComponent = (c: any): c is ComponentVnode => typeof c?.type === 'function';
 
-export type Env<N = any, S = any> = {
-  createNode(vnode: EnvVnode, parentState: S | null): { node: N; state: S };
-  mountAttributesBeforeChildren(node: N, vnode: EnvVnode, state: S): void;
-  mountAttributesAfterChildren(node: N, vnode: EnvVnode, state: S): void;
-  updateAttributesBeforeChildren(node: N, newVnode: EnvVnode, oldVnode: EnvVnode, state: S): void;
-  updateAttributesAfterChildren(node: N, newVnode: EnvVnode, oldVnode: EnvVnode, state: S): void;
-  unmountAttributesBeforeChildren(node: N, state: S): void;
-  unmountAttributesAfterChildren(node: N, state: S): void;
-  //
-  insertBefore(parentNode: N, newNode: N, referenceNode: N | null): void;
-  removeChild(parentNode: N, child: N): void;
-  parentNode(node: N): N | null;
-  nextSibling(node: N): N | null;
-};
-
-export const queueMacrotask =
-  typeof MessageChannel !== 'undefined'
-    ? (cb: VoidFunction) => {
-      const { port1, port2 } = new MessageChannel();
-      port1.onmessage = cb;
-      port2.postMessage(null);
-    }
-    : (cb: VoidFunction) => {
-      setTimeout(cb);
-    };
-
-export const queueMicrotask =
-  typeof window.queueMicrotask !== 'undefined'
-    ? window.queueMicrotask
-    : typeof Promise !== 'undefined'
-      ? (cb: VoidFunction) => Promise.resolve().then(cb)
-      : queueMacrotask;
-
-export const tryCatchLog = (fn: Function) => {
-  try {
-    fn();
-  } catch (error) {
-    console.error(error);
-  }
-};
-
-
-const enum RefType {
-  ITEM,
-  LIST,
-  ROXY,
-}
-type ItemRef<N, S> = {
-  type: RefType.ITEM;
-  vnode: EnvVnode;
-  node: N;
-  childrenRef: Ref<N, S> | null;
-  state: S;
-};
-type ListRef<N, S> = {
-  type: RefType.LIST;
-  // ListRef 理论上不需要 vnode, 因为它 vnode = refList.map(it => it.vnode)
-  // 当然, list 里面又有 list, 则 it.vnode 不一定存在, 还要处理嵌套关系, 直接在数据上就保留下来好了
-  vnode: NonEmptyArrayVnode;
-  refList: [Ref<N, S>, ...Ref<N, S>[]];
-  // parentState: S | null;
-};
-type RoxyRef<N, S> = {
-  type: RefType.ROXY;
-  vnode: ComponentVnode;
-  // roxy 有的是 key 和 instance/props, 不需要 vnode, 不, 连 key 都不需要。 list 也不需要 vnode
-  instance: ReturnType<typeof createInstance>;
-  render: (props: any) => Vnode;
-  renderedVnode: Vnode;
-  renderedRef: Ref<N, S>;
-  // parentState: S | null;
-};
-type Ref<N = any, S = any> = ItemRef<N, S> | ListRef<N, S> | RoxyRef<N, S>;
 
 const symbol = Symbol('roxy');
 
 type EventMap = {
-  // ? 是 mount - render - rendered - mounted - (update - render - rendered - updated)* - unmount - unmounted
   mount: never;
   mounted: never;
   update: never;
   updated: never;
   unmount: never;
   unmounted: never;
-  error: Error; // error 只有 setup/render 函数，至于别的 hook，都在自己的异步下执行
-  // activate/deactivate 都放在 ctx 上，最终 listener 数组是在 KeepAlive 组件上，由 KeepAlive 组件去执行。。。
-  // KeepAlive 的实现是通过 Portal 实现的，移除的时候，Portal 到一个未 attach 节点上，加入的时候 Portal 到 KeepAlive 所在节点，这样就从 vdom 的 type 或结构变化 变为了 Portal 的属性变化
-  // activate: never;
-  // activated: never;
-  // deactivate: never;
-  // deactivated: never;
+  error: Error;
 };
 
-function createInstance<P = any, C extends {} = {}>(props: P, ctx: C | null = null, doUpdate: () => void) {
+function createInstance<P extends {} = {}, C extends {} = {}>(init: P, ctx: C | null, doUpdate: () => void) {
   const hooks: Record<keyof EventMap, Set<Function>> = {} as any;
   const on = <K extends keyof EventMap>(type: K, fn: (event: EventMap[K]) => any) => {
     hooks[type] ??= new Set();
@@ -124,7 +47,7 @@ function createInstance<P = any, C extends {} = {}>(props: P, ctx: C | null = nu
   };
 
   return {
-    props,
+    props: init,
     ctx: Object.create(ctx) as C & Record<PropertyKey, any>,
     on,
     update,
@@ -132,7 +55,50 @@ function createInstance<P = any, C extends {} = {}>(props: P, ctx: C | null = nu
   };
 }
 
-export function createEnv<N, S>(env: Env<N, S>) {
+
+export type Env<N = any, S = any> = {
+  createNode(vnode: EnvVnode, parentState: S | null): { node: N; state: S };
+  mountAttributesBeforeChildren(node: N, vnode: EnvVnode, state: S): void;
+  mountAttributesAfterChildren(node: N, vnode: EnvVnode, state: S): void;
+  updateAttributesBeforeChildren(node: N, newVnode: EnvVnode, oldVnode: EnvVnode, state: S): void;
+  updateAttributesAfterChildren(node: N, newVnode: EnvVnode, oldVnode: EnvVnode, state: S): void;
+  unmountAttributesBeforeChildren(node: N, state: S): void;
+  unmountAttributesAfterChildren(node: N, state: S): void;
+  //
+  insertBefore(parentNode: N, newNode: N, referenceNode: N | null): void;
+  removeChild(parentNode: N, child: N): void;
+  parentNode(node: N): N | null;
+  nextSibling(node: N): N | null;
+};
+
+const enum RefType {
+  ITEM,
+  LIST,
+  ROXY,
+}
+type ItemRef<N, S> = {
+  type: RefType.ITEM;
+  vnode: EnvVnode;
+  node: N;
+  childrenRef: Ref<N, S> | null;
+  state: S;
+};
+type ListRef<N, S> = {
+  type: RefType.LIST;
+  vnode: NonEmptyArrayVnode;
+  refList: [Ref<N, S>, ...Ref<N, S>[]];
+};
+type RoxyRef<N, S> = {
+  type: RefType.ROXY;
+  vnode: ComponentVnode;
+  instance: ReturnType<typeof createInstance>;
+  render: (props: any) => Vnode;
+  renderedVnode: Vnode;
+  renderedRef: Ref<N, S>;
+};
+type Ref<N = any, S = any> = ItemRef<N, S> | ListRef<N, S> | RoxyRef<N, S>;
+
+export function createRoxy<N, S>(env: Env<N, S>) {
   return { mount, update, unmount };
   function mount(parentNode: N, referenceNode: N | null, parentState: S | null, vnode: Vnode, ctx: any): Ref<N, S> {
     if (isEmpty(vnode) || isLeaf(vnode)) {
@@ -156,7 +122,6 @@ export function createEnv<N, S>(env: Env<N, S>) {
         type: RefType.LIST,
         vnode,
         refList: vnode.map(childVnode => mount(parentNode, referenceNode, parentState, childVnode, ctx)) as [any, ...any[]],
-        // parentState,
       };
     }
     if (isComponent(vnode)) {
@@ -179,7 +144,6 @@ export function createEnv<N, S>(env: Env<N, S>) {
         render,
         renderedVnode: renderedVnode,
         renderedRef: renderedRef,
-        // parentState,
       };
       return ref;
     }
@@ -281,6 +245,7 @@ export function createEnv<N, S>(env: Env<N, S>) {
   }
 }
 
+
 // function refNodeFirst<N>(ref: Ref<N>): N {
 //   if (ref.type === RefType.ITEM) {
 //     return ref.node;
@@ -310,5 +275,6 @@ function refNodeLast<N>(ref: Ref<N>): N {
 //   }
 //   return refNodeAll(ref.renderedRef, nodes);
 // }
+
 
 export type RoxyComponent<P = {}, C = {}> = (init: P, ins: ReturnType<typeof createInstance<P, C>>) => (props: P) => Vnode;
