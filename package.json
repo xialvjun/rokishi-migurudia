@@ -1,0 +1,23 @@
+{
+  "name": "rokishi",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xialvjun/rokishi-migurudia.git"
+  },
+  "keywords": [],
+  "author": "xialvjun<xialvjun@live.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/xialvjun/rokishi-migurudia/issues"
+  },
+  "homepage": "https://github.com/xialvjun/rokishi-migurudia#readme",
+  "devDependencies": {
+    "typescript": "^5.0.4"
+  }
+}
