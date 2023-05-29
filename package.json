@@ -2,24 +2,39 @@
   "name": "senia",
   "version": "0.1.0",
   "description": "",
-  "main": "src/index.js",
-  "module": "src/index.js",
+  "keywords": [],
+  "author": "xialvjun<xialvjun@live.com>",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./jsx-runtime": {
+      "import": "./dist/jsx-runtime.mjs",
+      "require": "./dist/jsx-runtime.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "unbuild",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xialvjun/eternal-senia.git"
   },
-  "keywords": [],
-  "author": "xialvjun<xialvjun@live.com>",
-  "license": "MIT",
   "bugs": {
     "url": "https://github.com/xialvjun/eternal-senia/issues"
   },
   "homepage": "https://github.com/xialvjun/eternal-senia#readme",
   "devDependencies": {
-    "typescript": "^5.0.4"
+    "typescript": "^5.0.4",
+    "unbuild": "^1.2.1"
   }
 }

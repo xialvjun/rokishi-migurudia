@@ -132,3 +132,4 @@ dist
 # custom
 .gignore/
 *.js
+demos/
