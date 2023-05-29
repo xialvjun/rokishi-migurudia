@@ -17,6 +17,8 @@ export function jsx(type: any, props: any, key: any) {
 
 export const jsxs = jsx;
 
+export const jsxDEV = jsx;
+
 export function Fragment(init: { children: any }) {
   return (props: any) => props.children;
 }
