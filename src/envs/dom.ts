@@ -1,15 +1,11 @@
-import type { Env } from './roxy';
-import * as r from './roxy';
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
-enum NameSpaceUri {
-  HTML = 'http://www.w3.org/1999/xhtml',
-  SVG = 'http://www.w3.org/2000/svg',
-  MATH_ML = 'http://www.w3.org/1998/Math/MathML',
-}
+import type { Env } from '../core';
+import { isEmpty, isLeaf, isElement } from '../core';
 
 type DomNode = Node;
 type DomElement = Element;
+
+export type N = DomNode;
+export type S = string;
 
 function setDOMAttribute(node: DomElement, key: string, value: any, namespace: string) {
   if (value === true) {
@@ -59,33 +55,40 @@ const SPECIAL_ATTRS: Record<PropertyKey, ReturnType<typeof makeSpecialAttr>> = {
       }
     },
   },
-  key: makeSpecialAttr('key', () => {}),
-  children: makeSpecialAttr('children', () => {}),
+  key: makeSpecialAttr('key', () => { }),
+  children: makeSpecialAttr('children', () => { }),
   selected: makeSpecialAttr('selected'),
   checked: makeSpecialAttr('checked'),
   value: makeSpecialAttr('value'),
   innerHTML: makeSpecialAttr('innerHTML'),
 };
 
-export const ENV_DOM: Env<DomNode, string> = {
+const xmlns: any = {
+  html: 'http://www.w3.org/1999/xhtml',
+  svg: 'http://www.w3.org/2000/svg',
+  mathml: 'http://www.w3.org/1998/Math/MathML',
+}
+
+export const env: Env<N, S> = {
   createNode(vnode, parentState) {
     const ns = parentState || '';
-    if (r.isEmpty(vnode)) {
+    if (isEmpty(vnode)) {
       const node = document.createComment('');
       return { node, state: ns };
     }
-    if (r.isLeaf(vnode)) {
+    if (isLeaf(vnode)) {
       const node = document.createTextNode(vnode + '');
       return { node, state: ns };
     }
-    if (r.isElement(vnode)) {
-      const node = ns ? document.createElementNS(ns, vnode.type) : document.createElement(vnode.type);
-      return { node, state: ns || (vnode.type === 'svg' ? NameSpaceUri.SVG : vnode.type === 'math' ? NameSpaceUri.MATH_ML : '') };
+    if (isElement(vnode)) {
+      const new_ns = (vnode.props as any).xmlns || xmlns[vnode.type] || ns;
+      const node = new_ns ? document.createElementNS(ns, vnode.type) : document.createElement(vnode.type);
+      return { node, state: new_ns };
     }
     throw new Error('Invalid Params');
   },
-  mountAttributesBeforeChildren(node, vnode, isSvg) {
-    if (!r.isElement(vnode)) return;
+  mountAttributesBeforeChildren(node, vnode, ns) {
+    if (!isElement(vnode)) return;
     const ps: any = vnode.props;
     for (const key in ps) {
       if (key in SPECIAL_ATTRS) continue;
@@ -93,12 +96,12 @@ export const ENV_DOM: Env<DomNode, string> = {
       if (key.startsWith('on')) {
         (node as any)[key.toLowerCase()] = value;
       } else {
-        setDOMAttribute(node as any, key, value, isSvg);
+        setDOMAttribute(node as any, key, value, ns);
       }
     }
   },
-  mountAttributesAfterChildren(node, vnode, isSvg) {
-    if (!r.isElement(vnode)) return;
+  mountAttributesAfterChildren(node, vnode, ns) {
+    if (!isElement(vnode)) return;
     const ps: any = vnode.props;
     for (const key in ps) {
       if (key in SPECIAL_ATTRS) {
@@ -106,12 +109,12 @@ export const ENV_DOM: Env<DomNode, string> = {
       }
     }
   },
-  updateAttributesBeforeChildren(node, newVnode, oldVnode, isSvg) {
-    if (r.isLeaf(newVnode)) {
+  updateAttributesBeforeChildren(node, newVnode, oldVnode, ns) {
+    if (isLeaf(newVnode)) {
       node.textContent = newVnode + '';
       return;
     }
-    if (!r.isElement(newVnode) || !r.isElement(oldVnode)) return;
+    if (!isElement(newVnode) || !isElement(oldVnode)) return;
     const nps: any = newVnode.props;
     const ops: any = oldVnode.props;
     for (const key in nps) {
@@ -122,7 +125,7 @@ export const ENV_DOM: Env<DomNode, string> = {
       if (key.startsWith('on')) {
         (node as any)[key.toLowerCase()] = nv;
       } else {
-        setDOMAttribute(node as any, key, nv, isSvg);
+        setDOMAttribute(node as any, key, nv, ns);
       }
     }
     for (const key in ops) {
@@ -134,8 +137,8 @@ export const ENV_DOM: Env<DomNode, string> = {
       }
     }
   },
-  updateAttributesAfterChildren(node, newVnode, oldVnode, isSvg) {
-    if (!r.isElement(newVnode) || !r.isElement(oldVnode)) return;
+  updateAttributesAfterChildren(node, newVnode, oldVnode, ns) {
+    if (!isElement(newVnode) || !isElement(oldVnode)) return;
     const nps: any = newVnode.props;
     const ops: any = oldVnode.props;
     for (const key in nps) {
@@ -155,8 +158,8 @@ export const ENV_DOM: Env<DomNode, string> = {
       }
     }
   },
-  unmountAttributesBeforeChildren(node, state) {},
-  unmountAttributesAfterChildren(node, state) {},
+  unmountAttributesBeforeChildren(node, state) { },
+  unmountAttributesAfterChildren(node, state) { },
   insertBefore(parentNode, newNode, referenceNode) {
     parentNode.insertBefore(newNode, referenceNode);
   },

@@ -1,13 +1,12 @@
 import { queueMacrotask, queueMicrotask, tryCatchLog } from './tools';
 
-export type EmptyVnode = false | null | undefined | [];
-export type LeafVnode = string | number;
-export type ElementVnode = { type: string; props: { children?: Vnode }; key?: any };
-export type EnvVnode = EmptyVnode | LeafVnode | ElementVnode;
-export type NonEmptyArrayVnode = [Vnode, ...Vnode[]];
-export type ComponentVnode = { type: (...args: any[]) => (...args: any[]) => Vnode; props: {}; key?: any };
+type EmptyVnode = false | null | undefined | [];
+type LeafVnode = string | number;
+type ElementVnode = { type: string; props: { children?: Vnode }; key?: any };
+type EnvVnode = EmptyVnode | LeafVnode | ElementVnode;
+type NonEmptyArrayVnode = [Vnode, ...Vnode[]];
+type ComponentVnode = { type: (...args: any[]) => (...args: any[]) => Vnode; props: {}; key?: any };
 export type Vnode = EnvVnode | NonEmptyArrayVnode | ComponentVnode;
-
 
 export const isEmpty = (c: any): c is EmptyVnode => c === false || c === null || c === undefined || (Array.isArray(c) && c.length === 0);
 export const isLeaf = (c: any): c is LeafVnode => typeof c === 'string' || typeof c === 'number';
@@ -16,7 +15,7 @@ export const isNonEmptyArray = (c: any): c is NonEmptyArrayVnode => Array.isArra
 export const isComponent = (c: any): c is ComponentVnode => typeof c?.type === 'function';
 
 
-const symbol = Symbol('roxy');
+const symbol = Symbol('magaleta');
 
 type EventMap = {
   mount: never;
@@ -25,7 +24,7 @@ type EventMap = {
   updated: never;
   unmount: never;
   unmounted: never;
-  error: Error;
+  // error: Error;
 };
 
 function createInstance<P extends {} = {}, C extends {} = {}>(init: P, ctx: C | null, doUpdate: () => void) {
@@ -74,7 +73,7 @@ export type Env<N = any, S = any> = {
 const enum RefType {
   ITEM,
   LIST,
-  ROXY,
+  MAGALETA,
 }
 type ItemRef<N, S> = {
   type: RefType.ITEM;
@@ -88,17 +87,18 @@ type ListRef<N, S> = {
   vnode: NonEmptyArrayVnode;
   refList: [Ref<N, S>, ...Ref<N, S>[]];
 };
-type RoxyRef<N, S> = {
-  type: RefType.ROXY;
+type MagaletaRef<N, S> = {
+  type: RefType.MAGALETA;
   vnode: ComponentVnode;
   instance: ReturnType<typeof createInstance>;
   render: (props: any) => Vnode;
   renderedVnode: Vnode;
   renderedRef: Ref<N, S>;
 };
-type Ref<N = any, S = any> = ItemRef<N, S> | ListRef<N, S> | RoxyRef<N, S>;
+type Ref<N = any, S = any> = ItemRef<N, S> | ListRef<N, S> | MagaletaRef<N, S>;
 
-export function createRoxy<N, S>(env: Env<N, S>) {
+// Magaleta is the adoptive older sister of Senia.
+export function createMagaleta<N, S>(env: Env<N, S>) {
   return { mount, update, unmount };
   function mount(parentNode: N, referenceNode: N | null, parentState: S | null, vnode: Vnode, ctx: any): Ref<N, S> {
     if (isEmpty(vnode) || isLeaf(vnode)) {
@@ -138,7 +138,7 @@ export function createRoxy<N, S>(env: Env<N, S>) {
       const renderedRef = mount(parentNode, referenceNode, parentState, renderedVnode, instance.ctx);
       instance[symbol].mounted?.forEach(tryCatchLog);
       const ref = {
-        type: RefType.ROXY as const,
+        type: RefType.MAGALETA as const,
         vnode,
         instance,
         render,
@@ -210,12 +210,12 @@ export function createRoxy<N, S>(env: Env<N, S>) {
       return rl;
     }
     if (isComponent(vnode) && isComponent(ref.vnode) && vnode.type === ref.vnode.type) {
-      const rr = ref as RoxyRef<N, S>;
-      const renderedVnode = rr.render(vnode.props);
-      rr.renderedRef = update(rr.renderedRef, parentState, renderedVnode, rr.instance.ctx);
-      rr.renderedVnode = renderedVnode;
-      rr.vnode = vnode;
-      return rr;
+      const rm = ref as MagaletaRef<N, S>;
+      const renderedVnode = rm.render(vnode.props);
+      rm.renderedRef = update(rm.renderedRef, parentState, renderedVnode, rm.instance.ctx);
+      rm.renderedVnode = renderedVnode;
+      rm.vnode = vnode;
+      return rm;
     }
     {
       const referenceNode = refNodeLast(ref);
@@ -277,4 +277,4 @@ function refNodeLast<N>(ref: Ref<N>): N {
 // }
 
 
-export type RoxyComponent<P = {}, C = {}> = (init: P, ins: ReturnType<typeof createInstance<P, C>>) => (props: P) => Vnode;
+export type Component<P = {}, C = {}> = (init: P, ins: ReturnType<typeof createInstance<P, C>>) => (props: P) => Vnode;

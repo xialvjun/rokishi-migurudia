@@ -1,23 +1,18 @@
+import { tryCatchLog } from './tools';
+import type { Component } from './core';
+
 
 let REF_LISTENER_CURRENT: VoidFunction;
 
-type Ref<T> = {
+export type Ref<T> = {
   value: T;
   // get(): T;
-  // set<S extends T>(nv: S): { pv: T; cv: S };
+  // set<S extends T>(nv: S): { pv: T; cv: S }; // set(undefined)
 }
-// type Ref<T> = T extends undefined ? {
-//   get(): T;
-//   set(): { pv: T; nv: undefined }
-//   set<S extends T>(nv: S): { pv: T; cv: S }
-// } : {
-//   get(): T;
-//   set<S extends T>(nv: S): { pv: T; cv: S }
-// }
 
-function ref<T>(): Ref<T | undefined>
-function ref<T>(value: T): Ref<T>
-function ref<T>(value?: T) {
+export function ref<T>(): Ref<T | undefined>
+export function ref<T>(value: T): Ref<T>
+export function ref<T>(value?: T) {
   const listeners = new Set<Function>();
   let v = value;
   return {
@@ -36,8 +31,6 @@ function ref<T>(value?: T) {
   //   REF_LISTENER_CURRENT && listeners.add(REF_LISTENER_CURRENT);
   //   return v;
   // }
-  // // function set(): { pv: T; nv: undefined }
-  // // function set<S extends T>(nv: S): { pv: T; nv: S }
   // function set(nv: any) {
   //   const pv = value;
   //   v = nv;
@@ -46,34 +39,8 @@ function ref<T>(value?: T) {
   // }
 }
 
-// const tryCatchLog = (fn: VoidFunction) => {
-//   try {
-//     fn();
-//   } catch (error) {
-//     console.error(error);
-//   }
-// };
 
-
-// const a = ref(0);
-// a.value = undefined;
-// a.get();
-// a.set();
-// a.set(undefined);
-// a.set(24)
-
-
-// const x = ref<number>();
-// x.value = undefined;
-// x.get()
-// x.set();
-// x.set(undefined);
-// x.set(23);
-
-
-import { RoxyComponent, tryCatchLog } from './roxy';
-
-function refComponent<T extends RoxyComponent<any, any>>(type: T) {
+function refComponent<T extends Component<any, any>>(type: T) {
   const newType = (initProps: any, ins: any) => {
     const render = type(initProps, ins);
     const newRnder = (props: any) => {
@@ -88,7 +55,7 @@ function refComponent<T extends RoxyComponent<any, any>>(type: T) {
 
 type Computed<T> = ReturnType<typeof computed<T>>
 
-function computed<T>(fn: () => T) {
+export function computed<T>(fn: () => T) {
   let value: T;
   let dirty = true;
   const ref_listener = () => {
@@ -130,25 +97,11 @@ export function watch(w: any, fn: Function, opts: { immediate?: boolean, flush?:
 //   REF_LISTENER_CURRENT = ref_lis
 // }
 
-watch(computed(() => 123), (cv, pv) => {}, {immediate: false})
+// watch(computed(() => 123), (cv, pv) => {}, {immediate: false})
 
-// const a = (ip:{}, ins:{}) => {
-//   return (p:{}) => ''
-// }
-
-// function abc(x: typeof a) {}
-
-// abc(
-//   (ip, ins) => {
-//     return p => ''
-//   }
-// )
-
-function defineComponent<P={}, C=any, T = RoxyComponent<P, C>>(type: T) {
-  type({}, {} as any);
+export function defineComponent<P={}, C=any>(type: Component<P, C>) {
   return refComponent(type);
 }
 
-const com = defineComponent<{}>((ip, ins) => {
-  return p => '';
-})
+
+// const a = (() => {}) as const
