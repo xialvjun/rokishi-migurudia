@@ -5,9 +5,10 @@ export { core };
 export * from './h';
 
 const createMagaleta = core.createMagaleta;
-export function renderDom(vnode: core.Vnode, node: Node) {
+function renderDom(vnode: core.Vnode, node: Node) {
   const env = createMagaleta(env_dom);
   env.mount(node, null, null, vnode, null);
 }
 
 export const render = renderDom;
+export * from './ref';

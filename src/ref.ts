@@ -1,4 +1,4 @@
-import { tryCatchLog } from './tools';
+import { queueMacrotask, queueMicrotask, tryCatchLog } from './tools';
 import type { Component } from './core';
 
 
@@ -40,19 +40,6 @@ export function ref<T>(value?: T) {
 }
 
 
-function refComponent<T extends Component<any, any>>(type: T) {
-  const newType = (initProps: any, ins: any) => {
-    const render = type(initProps, ins);
-    const newRnder = (props: any) => {
-      // const old = REF_LISTENER_CURRENT;
-      REF_LISTENER_CURRENT = ins.update;
-      return render(props);
-    }
-    return newRnder;
-  };
-  return newType as T;
-}
-
 type Computed<T> = ReturnType<typeof computed<T>>
 
 export function computed<T>(fn: () => T) {
@@ -80,28 +67,48 @@ export function computed<T>(fn: () => T) {
   }
 }
 
+
 const WATCH_OPTS_DEFAULT = { immediate: false, flush: 'post' } as const;
-export function watch<T>(w: Computed<T>|Ref<T>, fn: (cv: T, pv: T) => any): void;
-export function watch<T>(w: Computed<T>|Ref<T>, fn: (cv: T, pv: T) => any, opt: {immediate?:false;flush?: 'pre' | 'post' | 'sync';}): void;
-export function watch<T>(w: Computed<T>|Ref<T>, fn: (cv: T, pv: T|undefined) => any, opt: {immediate:true;flush?: 'pre' | 'post' | 'sync';}): void;
-export function watch<T>(w: () => T, fn: (cv: T, pv: T|undefined) => any, opt: {immediate:true;flush?: 'pre' | 'post' | 'sync';}): void;
+
+export function watch<T>(w: Computed<T> | Ref<T>, fn: (cv: T, pv: T) => any): void;
+export function watch<T>(w: Computed<T> | Ref<T>, fn: (cv: T, pv: T) => any, opt: { immediate?: false; flush?: 'pre' | 'post' | 'sync'; }): void;
+export function watch<T>(w: Computed<T> | Ref<T>, fn: (cv: T, pv: T | undefined) => any, opt: { immediate: true; flush?: 'pre' | 'post' | 'sync'; }): void;
+export function watch<T>(w: () => T, fn: (cv: T, pv: T | undefined) => any, opt: { immediate: true; flush?: 'pre' | 'post' | 'sync'; }): void;
 export function watch(w: any, fn: Function, opts: { immediate?: boolean, flush?: 'pre' | 'post' | 'sync'; } = WATCH_OPTS_DEFAULT) {
-  // const ref_listener = 
+  const ref_listener_do = () => {
+    const pv = cv;
+    cv = w.value;
+    fn(cv, pv);
+  };
+  let ref_listener = ref_listener_do;
+  if (opts.flush === 'pre') {
+    ref_listener = () => {
+      queueMicrotask(ref_listener_do);
+    };
+  }
+  if (opts.flush === 'post') {
+    ref_listener = () => {
+      queueMacrotask(ref_listener_do);
+    };
+  }
   w = typeof w === 'function' ? computed(w) : w;
-}
-
-// export function effect(fn: ()=>any, flush:'pre' | 'post' | 'sync' = 'sync') {
-//   const ref_listener = flush === 'sync' ? () => {fn();} : flush === 'pre' ? () => {
-
-//   }
-//   REF_LISTENER_CURRENT = ref_lis
-// }
-
-// watch(computed(() => 123), (cv, pv) => {}, {immediate: false})
-
-export function defineComponent<P={}, C=any>(type: Component<P, C>) {
-  return refComponent(type);
+  REF_LISTENER_CURRENT = ref_listener;
+  let cv = w.value;
+  if (opts.immediate) {
+    fn(cv, undefined);
+  }
 }
 
 
-// const a = (() => {}) as const
+export function defineComponent<P = any, C = any>(type: Component<P, C>) {
+  const newType = (initProps: any, ins: any) => {
+    const render = type(initProps, ins);
+    const newRnder = (props: any) => {
+      // const old = REF_LISTENER_CURRENT;
+      REF_LISTENER_CURRENT = ins.update;
+      return render(props);
+    }
+    return newRnder;
+  };
+  return newType as typeof type;
+}
