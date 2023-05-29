@@ -61,8 +61,8 @@ export type Env<N = any, S = any> = {
   mountAttributesAfterChildren(node: N, vnode: EnvVnode, state: S): void;
   updateAttributesBeforeChildren(node: N, newVnode: EnvVnode, oldVnode: EnvVnode, state: S): void;
   updateAttributesAfterChildren(node: N, newVnode: EnvVnode, oldVnode: EnvVnode, state: S): void;
-  unmountAttributesBeforeChildren(node: N, state: S): void;
-  unmountAttributesAfterChildren(node: N, state: S): void;
+  unmountAttributesBeforeChildren(node: N, vnode: EnvVnode, state: S): void;
+  unmountAttributesAfterChildren(node: N, vnode: EnvVnode, state: S): void;
   //
   insertBefore(parentNode: N, newNode: N, referenceNode: N | null): void;
   removeChild(parentNode: N, child: N): void;
@@ -228,9 +228,9 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
 
   function unmount(ref: Ref<N, S>) {
     if (ref.type === RefType.ITEM) {
-      env.unmountAttributesBeforeChildren(ref.node, ref.state);
+      env.unmountAttributesBeforeChildren(ref.node, ref.vnode, ref.state);
       ref.childrenRef && unmount(ref.childrenRef);
-      env.unmountAttributesAfterChildren(ref.node, ref.state);
+      env.unmountAttributesAfterChildren(ref.node, ref.vnode, ref.state);
       env.removeChild(env.parentNode(ref.node)!, ref.node);
     } else if (ref.type === RefType.LIST) {
       ref.refList
@@ -277,4 +277,4 @@ function refNodeLast<N>(ref: Ref<N>): N {
 // }
 
 
-export type Component<P = {}, C = {}> = (init: P, ins: ReturnType<typeof createInstance<P, C>>) => (props: P) => Vnode;
+export type Component<P extends {} = {}, C extends {} = {}> = (init: P, ins: ReturnType<typeof createInstance<P, C>>) => (props: P) => Vnode;

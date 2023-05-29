@@ -158,8 +158,11 @@ export const env: Env<N, S> = {
       }
     }
   },
-  unmountAttributesBeforeChildren(node, state) { },
-  unmountAttributesAfterChildren(node, state) { },
+  unmountAttributesBeforeChildren(node, vnode, ns) {
+    const ref = (vnode as any)?.props?.ref;
+    ref && SPECIAL_ATTRS.ref.unmount(node, ref);
+  },
+  unmountAttributesAfterChildren(node, vnode, ns) { },
   insertBefore(parentNode, newNode, referenceNode) {
     parentNode.insertBefore(newNode, referenceNode);
   },

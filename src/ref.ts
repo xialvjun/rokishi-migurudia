@@ -100,7 +100,7 @@ export function watch(w: any, fn: Function, opts: { immediate?: boolean, flush?:
 }
 
 
-export function defineComponent<P = any, C = any>(type: Component<P, C>) {
+export function defineComponent<P extends {} = any, C extends {} = any>(type: Component<P, C>) {
   const newType = (initProps: any, ins: any) => {
     const render = type(initProps, ins);
     const newRnder = (props: any) => {
