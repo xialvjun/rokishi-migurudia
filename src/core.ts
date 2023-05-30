@@ -201,6 +201,7 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
         });
         if (foundRef) {
           refList.splice(foundIdx, 1);
+          update_idx(foundRef, parentNode, referenceNode);
           return update(foundRef, parentState, v, ctx);
         }
         return mount(parentNode, referenceNode, parentState, v, ctx);
@@ -223,6 +224,18 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       unmount(ref);
       return newRef;
     }
+  }
+
+  function update_idx(ref: Ref<N, S>, parentNode: N, referenceNode: N | null) {
+    if (ref.type === RefType.ITEM) {
+      env.insertBefore(parentNode, ref.node, referenceNode);
+      return;
+    }
+    if (ref.type === RefType.LIST) {
+      ref.refList.forEach(it => update_idx(it, parentNode, referenceNode));
+      return;
+    }
+    update_idx(ref.renderedRef, parentNode, referenceNode);
   }
 
   function unmount(ref: Ref<N, S>) {
