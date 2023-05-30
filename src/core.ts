@@ -87,7 +87,8 @@ type ItemRef<N, S> = {
 type ListRef<N, S> = {
   type: RefType.LIST;
   vnode: NonEmptyArrayVnode;
-  refList: [Ref<N, S>, ...Ref<N, S>[]];
+  // refList: [Ref<N, S>, ...Ref<N, S>[]];
+  refIdxMap: Map<Ref<N, S>, number>;
 };
 type MagaletaRef<N, S> = {
   type: RefType.MAGALETA;
@@ -122,7 +123,8 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       return {
         type: RefType.LIST,
         vnode,
-        refList: vnode.map(childVnode => mount(parentNode, referenceNode, parentState, childVnode, ctx)) as [any, ...any[]],
+        // refList: vnode.map(childVnode => mount(parentNode, referenceNode, parentState, childVnode, ctx)) as [any, ...any[]],
+        refIdxMap: vnode.reduce((map, childVnode, idx) => map.set(mount(parentNode, referenceNode, parentState, childVnode, ctx), idx), new Map()),
       };
     }
     if (isComponent(vnode)) {
@@ -188,25 +190,31 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
     }
     if (isNonEmptyArray(vnode) && isNonEmptyArray(ref.vnode)) {
       const rl = ref as ListRef<N, S>;
-      const refList = rl.refList.slice();
-      const lastNode = refNodeLast(refList[refList.length - 1]);
+      // 之前的 abcz 更新顺序 az-abz-abcz 的算法很简单，但可能访问并变更了太多次 dom，性能可能有问题，而且浏览器开发者工具会收起所有的 dom(因为顺序中间有改变)，开发体验不好。
+      const refIdxMap = rl.refIdxMap;
+      const lastNode = refNodeLast(refIdxMap[refIdxMap.length - 1]);
       const parentNode = env.parentNode(lastNode)!;
       const referenceNode = env.nextSibling(lastNode);
-      rl.refList = vnode.map((v: any) => {
+      rl.refIdxMap = vnode.reduce((map, v: any, newIdx) => {
+        let foundRef: Ref<N, S> = null!;
         let foundIdx = -1;
-        const foundRef = refList.find((it, idx) => {
-          foundIdx = idx;
+        for (const [it, idx] of refIdxMap) {
           const rv: any = it.vnode;
-          return v?.key === rv?.key && v?.type === rv?.type;
-        });
-        if (foundRef) {
-          refList.splice(foundIdx, 1);
-          update_idx(foundRef, parentNode, referenceNode);
-          return update(foundRef, parentState, v, ctx);
+          if (v?.key === rv?.key && v?.type === rv?.type) {
+            foundRef = it;
+            foundIdx = idx;
+            break;
+          }
         }
-        return mount(parentNode, referenceNode, parentState, v, ctx);
-      }) as [any, ...any[]];
-      refList.forEach(it => unmount(it));
+        if (foundRef) {
+          refIdxMap.delete(foundRef);
+          update_idx(foundRef, parentNode, referenceNode);
+          return map.set(update(foundRef, parentState, v, ctx), newIdx);
+        }
+        return map.set(mount(parentNode, referenceNode, parentState, v, ctx), newIdx);
+      }, new Map());
+      // refIdxMap.forEach(it => unmount(it));
+      unmount({type: RefType.LIST, vnode: [null], refIdxMap});
       rl.vnode = vnode;
       return rl;
     }
@@ -245,10 +253,12 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       env.unmountAttributesAfterChildren(ref.node, ref.vnode, ref.state);
       env.removeChild(env.parentNode(ref.node)!, ref.node);
     } else if (ref.type === RefType.LIST) {
-      ref.refList
-        .slice()
-        .reverse()
-        .forEach(it => unmount(it));
+      // ref.refList
+      //   .slice()
+      //   .reverse()
+      //   .forEach(it => unmount(it));
+      [...ref.refIdxMap.keys()].reverse()
+      .forEach(it => unmount(it));
     } else {
       ref.instance[symbol].unmount?.forEach(tryCatchLog);
       unmount(ref.renderedRef);
