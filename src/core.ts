@@ -80,6 +80,8 @@ type ItemRef<N, S> = {
   vnode: EnvVnode;
   node: N;
   childrenRef: Ref<N, S> | null;
+  // state is just env node's state, rather than ItemRef/ListRef/MagaletaRef's state.
+  // The ItemRef/ListRef/MagaletaRef's state is just their fields like childrenRef/renderedRef
   state: S;
 };
 type ListRef<N, S> = {
@@ -92,7 +94,6 @@ type MagaletaRef<N, S> = {
   vnode: ComponentVnode;
   instance: ReturnType<typeof createInstance>;
   render: (props: any) => Vnode;
-  renderedVnode: Vnode;
   renderedRef: Ref<N, S>;
 };
 type Ref<N = any, S = any> = ItemRef<N, S> | ListRef<N, S> | MagaletaRef<N, S>;
@@ -142,8 +143,7 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
         vnode,
         instance,
         render,
-        renderedVnode: renderedVnode,
-        renderedRef: renderedRef,
+        renderedRef,
       };
       return ref;
     }
@@ -213,7 +213,6 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       const rm = ref as MagaletaRef<N, S>;
       const renderedVnode = rm.render(vnode.props);
       rm.renderedRef = update(rm.renderedRef, parentState, renderedVnode, rm.instance.ctx);
-      rm.renderedVnode = renderedVnode;
       rm.vnode = vnode;
       return rm;
     }
