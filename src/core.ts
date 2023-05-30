@@ -187,8 +187,11 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       return ri;
     }
     if (isNonEmptyArray(vnode) && isNonEmptyArray(ref.vnode)) {
+      // TODO: 也许需要优化。见分支 dev-0.1.0-update_idx
+      // 之前的 abcz 更新顺序 az-abz-abcz 的算法很简单，但可能访问并变更了太多次 dom，性能可能有问题
+      // 而且浏览器开发者工具会收起所有的 dom(因为顺序中间有改变)，开发体验不好
       const rl = ref as ListRef<N, S>;
-      const refList = rl.refList.slice();
+      const refList = rl.refList.slice() as typeof rl.refList;
       const lastNode = refNodeLast(refList[refList.length - 1]);
       const parentNode = env.parentNode(lastNode)!;
       const referenceNode = env.nextSibling(lastNode);
@@ -206,7 +209,7 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
         }
         return mount(parentNode, referenceNode, parentState, v, ctx);
       }) as [any, ...any[]];
-      refList.forEach(it => unmount(it));
+      unmount({ type: RefType.LIST, vnode: [null], refList });
       rl.vnode = vnode;
       return rl;
     }
