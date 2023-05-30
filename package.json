@@ -1,8 +1,8 @@
 {
   "name": "senia",
   "version": "0.1.0",
-  "description": "",
-  "keywords": [],
+  "description": "A simple framework with imperative code to build declarative UI.",
+  "keywords": ["vdom", "jsx"],
   "author": "xialvjun<xialvjun@live.com>",
   "license": "MIT",
   "type": "module",
