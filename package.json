@@ -1,23 +1,45 @@
 {
-  "name": "rokishi",
+  "name": "senia",
   "version": "0.1.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A simple framework with imperative code to build declarative UI.",
+  "keywords": ["vdom", "jsx"],
+  "author": "xialvjun<xialvjun@live.com>",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": "./dist/jsx-runtime.mjs",
+      "require": "./dist/jsx-runtime.cjs"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-dev-runtime.d.ts",
+      "import": "./dist/jsx-dev-runtime.mjs",
+      "require": "./dist/jsx-dev-runtime.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "unbuild",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xialvjun/rokishi-migurudia.git"
+    "url": "git+https://github.com/xialvjun/eternal-senia.git"
   },
-  "keywords": [],
-  "author": "xialvjun<xialvjun@live.com>",
-  "license": "MIT",
   "bugs": {
-    "url": "https://github.com/xialvjun/rokishi-migurudia/issues"
+    "url": "https://github.com/xialvjun/eternal-senia/issues"
   },
-  "homepage": "https://github.com/xialvjun/rokishi-migurudia#readme",
+  "homepage": "https://github.com/xialvjun/eternal-senia#readme",
   "devDependencies": {
-    "typescript": "^5.0.4"
+    "typescript": "^5.0.4",
+    "unbuild": "^1.2.1"
   }
 }
