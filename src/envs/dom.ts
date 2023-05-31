@@ -7,6 +7,46 @@ type DomElement = Element;
 export type N = DomNode;
 export type S = string;
 
+function classX(value: any) {
+  const list: string[] = [];
+  recursive(value);
+  return list.join(' ');
+  function recursive(v: any) {
+    if (!v) return;
+    if (typeof v === 'string' || v instanceof String) {
+      return list.push(v + '');
+    }
+    if (Array.isArray(v)) {
+      return v.forEach(recursive);
+    }
+    for (const k in v) {
+      v[k] && list.push(k);
+    }
+  }
+}
+
+function styleX(value: any) {
+  const list: string[] = [];
+  recursive(value);
+  return list.join(';');
+  function recursive(v: any) {
+    if (!v) return;
+    if (typeof v === 'string') {
+      return list.push(v + '');
+    }
+    if (Array.isArray(v)) {
+      return v.forEach(recursive);
+    }
+    for (const k in v) {
+      const n = k
+        .split(/(?=[A-Z])/)
+        .join('-')
+        .toLowerCase();
+      list.push(n + ':' + v[k]);
+    }
+  }
+}
+
 function setDOMAttribute(node: DomElement, key: string, value: any, namespace: string) {
   if (value === true) {
     node.setAttribute(key, '');
@@ -15,6 +55,7 @@ function setDOMAttribute(node: DomElement, key: string, value: any, namespace: s
   } else if (namespace) {
     node.setAttributeNS(namespace, key, value);
   } else {
+    value = key === 'class' ? classX(value) : key === 'style' ? styleX(value) : value;
     node.setAttribute(key, value);
   }
 }
@@ -67,7 +108,7 @@ const xmlns: any = {
   html: 'http://www.w3.org/1999/xhtml',
   svg: 'http://www.w3.org/2000/svg',
   mathml: 'http://www.w3.org/1998/Math/MathML',
-}
+};
 
 export const env: Env<N, S> = {
   createNode(vnode, parentState) {
