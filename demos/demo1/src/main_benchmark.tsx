@@ -1,9 +1,10 @@
-import { render, defineComponent, ref } from 'senia';
+import { render, defineComponent, ref, useMemo } from 'senia';
 
 const Row = defineComponent<{ item: BussItem; selected: boolean; actions: BussActions }>((init, ins) => {
   const onselect = () => ins.props.actions.select(ins.props.item.id);
   const onremove = () => ins.props.actions.remove(ins.props.item.id);
-  return props => {
+  const memo = useMemo();
+  return memo.render(props => {
     const { selected, item } = props;
     return (
       <tr className={selected ? 'danger' : ''}>
@@ -12,15 +13,18 @@ const Row = defineComponent<{ item: BussItem; selected: boolean; actions: BussAc
           <a onclick={onselect}>{item.label}</a>
         </td>
         <td className="col-md-1">
-          <a onclick={onremove}>
+          <a onclick={onremove} oncanplay={memo('a', e => {
+            console.log(e.target)
+          })}>
             <span className="glyphicon glyphicon-remove" aria-hidden="true" />
           </a>
         </td>
-        <td className="col-md-6" colSpan={3} rowSpan={3} role="asdf" />
-        <img src='adsfdsf' alt='asdgdsg' />
+        <td className="col-md-6" rowSpan={3} colSpan={2} />
+        <img src='adsf' alt='asddsg' srcset='asdsgasdg' />
+        <audio src='asdfds'></audio>
       </tr>
     );
-  };
+  });
 });
 
 const Button = defineComponent<{ id: string; cb: ()=>any; title: string }>(_ => {
