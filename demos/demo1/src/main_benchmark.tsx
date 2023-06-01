@@ -9,24 +9,25 @@ const Row = defineComponent<{ item: BussItem; selected: boolean; actions: BussAc
       <tr className={selected ? 'danger' : ''}>
         <td className="col-md-1">{item.id}</td>
         <td className="col-md-4">
-          <a onClick={onselect}>{item.label}</a>
+          <a onclick={onselect}>{item.label}</a>
         </td>
         <td className="col-md-1">
-          <a onClick={onremove}>
+          <a onclick={onremove}>
             <span className="glyphicon glyphicon-remove" aria-hidden="true" />
           </a>
         </td>
-        <td className="col-md-6" />
+        <td className="col-md-6" colSpan={3} rowSpan={3} role="asdf" />
+        <img src='adsfdsf' alt='asdgdsg' />
       </tr>
     );
   };
 });
 
-const Button = defineComponent<{ id: string; cb: Function; title: string }>(_ => {
+const Button = defineComponent<{ id: string; cb: ()=>any; title: string }>(_ => {
   return props => {
     return (
       <div className="col-sm-6 smallpad">
-        <button type="button" className="btn btn-primary btn-block" id={props.id} onClick={props.cb}>
+        <button type="button" className="btn btn-primary btn-block" id={props.id} onclick={props.cb}>
           {props.title}
         </button>
       </div>
@@ -37,13 +38,13 @@ const Button = defineComponent<{ id: string; cb: Function; title: string }>(_ =>
 const Jumbotron = defineComponent<{ actions: BussActions }>((init, ins) => {
   return props => {
     return (
-      <div class="jumbotron">
-        <div class="row">
-          <div class="col-md-6">
+      <div className="jumbotron">
+        <div className="row">
+          <div className="col-md-6">
             <h1>senia keyed</h1>
           </div>
-          <div class="col-md-6">
-            <div class="row">
+          <div className="col-md-6">
+            <div className="row">
               <Button id="run" title="Create 1,000 rows" cb={() => props.actions.run()} />
               <Button id="runlots" title="Create 10,000 rows" cb={() => props.actions.run_lots()} />
               <Button id="add" title="Append 1,000 rows" cb={() => props.actions.add()} />
@@ -142,16 +143,16 @@ const App = defineComponent(_ => {
   return _ => {
     const { data, selected } = buss.state.value;
     return (
-      <div class="container">
+      <div className="container">
         <Jumbotron actions={buss.actions} />
-        <table class="table table-hover table-striped test-data">
+        <table className="table table-hover table-striped test-data">
           <tbody>
             {data.map(item => (
               <Row key={item.id} item={item} selected={selected === item.id} actions={buss.actions} />
             ))}
           </tbody>
         </table>
-        <span class="preloadicon glyphicon glyphicon-remove" aria-hidden="true" />
+        <span className="preloadicon glyphicon glyphicon-remove" aria-hidden="true" />
       </div>
     );
   };

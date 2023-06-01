@@ -1,4 +1,7 @@
 export namespace JSX {
+  export interface ElementChildrenAttribute {
+      children: {}; // specify children name to use
+  }
   export interface IntrinsicAttributes {
     key?: PropertyKey;
   }
@@ -29,32 +32,36 @@ export namespace JSX {
 }
 
 type html = HTMLElementTagNameMap;
-type svg = SVGElementTagNameMap;
-type mathml = MathMLElementTagNameMap;
+// type svg = SVGElementTagNameMap;
+// type mathml = MathMLElementTagNameMap;
 type key_h = keyof html;
-type key_s = keyof svg;
-type key_m = keyof mathml;
-type jsx_dom<k> = k extends key_h ? html[k] : k extends key_s ? svg[k] : k extends key_m ? mathml[k] : any;
+// type key_s = keyof svg;
+// type key_m = keyof mathml;
+
+// type jsx_dom<k> = k extends key_h ? html[k] : k extends key_s ? svg[k] : k extends key_m ? mathml[k] : any;
+type jsx_dom<k> = k extends key_h ? html[k] : any;
 
 type default_attr = {
   className: any;
   style: any;
+  children: any;
 };
 type special_dom_attr = {
-  a: {};
 };
 type sda = special_dom_attr;
 type key_sda = keyof special_dom_attr;
 type PickJsxAttr2<T, k> = Omit<
-  PickByValueType<T, string | number | boolean>,
+  //PickByValueType<T, string | number | boolean>,
+  T,
   GetReadonlyKeys<T> | (k extends key_sda ? keyof sda[k] : never)
 > &
-  (k extends key_sda ? sda[k] : default_attr) &
-  PickByKey<T>;
+  (k extends key_sda ? sda[k] : default_attr)
+  // & PickByKey<T>;
 // type jsx_dom_attr<T> = Omit<PickByValueType<T, >>
 
 type iii = {
-  [k in key_h | key_s | key_m]: Partial<PickJsxAttr2<jsx_dom<k>, k>>;
+  // [k in key_h|key_s|key_m]: Partial<PickJsxAttr2<jsx_dom<k>, k>>;
+  [k in key_h]: Partial<PickJsxAttr2<jsx_dom<k>, k>>;
 } & { [custom_web_component: string]: any };
 
 // 声明 t 的时候要把 返回类型一块儿写上，这样在下面的 t(e => {}) e 才能继承类型
@@ -70,6 +77,7 @@ type iii = {
 
 // 如果有必要的话，可以参考 https://www.npmjs.com/package/tsx-dom-types 但它还不够好，没有区分不同的元素，例如 audio 和 img 的属性肯定是不同的
 // https://juejin.cn/post/7091661845756379167
+// https://www.npmjs.com/package/@nativescript-dom/react-types
 
 // type Equal<X, Y> =
 //   (<T>() => T extends X ? 1 : 2) extends

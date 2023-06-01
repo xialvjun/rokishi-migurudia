@@ -12,3 +12,4 @@ function renderDom(vnode: core.Vnode, node: Node) {
 
 export const render = renderDom;
 export * from './ref';
+export { useMemo } from './tools';

@@ -112,3 +112,7 @@ export function defineComponent<P extends {} = any, C extends {} = any>(type: Co
   };
   return newType as typeof type;
 }
+
+export const Setup = defineComponent<{key:PropertyKey, children: Component<{},any>}>((init, ins) => {
+  return init.children({}, ins);
+})
