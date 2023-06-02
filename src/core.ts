@@ -188,8 +188,9 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
     }
     if (isNonEmptyArray(vnode) && isNonEmptyArray(ref.vnode)) {
       // TODO: 也许需要优化。见分支 dev-0.1.0-update_idx
-      // 之前的 abcz 更新顺序 az-abz-abcz 的算法很简单，但可能访问并变更了太多次 dom，性能可能有问题
-      // 而且浏览器开发者工具会收起所有的 dom(因为顺序中间有改变)，开发体验不好
+      // 之前的 abcz 更新顺序 az-abz-abcz 的算法很简单，但无论真实顺序变没变，都dom重新整理了顺序，可能访问并变更了太多次 dom，性能可能有问题
+      // 而且浏览器开发者工具会收起所有的 dom(因为父元素的顺序都有改变)，开发体验不好
+      // preact 的逻辑似乎是先不管顺序 update 完，然后统一去 appendChild/insertBefore
       const rl = ref as ListRef<N, S>;
       const refList = rl.refList.slice() as typeof rl.refList;
       const lastNode = refNodeLast(refList[refList.length - 1]);
@@ -204,6 +205,11 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
         });
         if (foundRef) {
           refList.splice(foundIdx, 1);
+          // 如果 foundIdx !== 0 说明要移动，直接移动到当前 refList[0] 的上面，或者上一个 ref 的下面
+          // 这就是第一个 ref，不存在上一个 ref，则必须 refList[0] 。所以需要 refNodeFirst
+          // 为 0 则不用移动。。。另外，因为定位基于其他的 ref，所以 Portal 必须要在原位留个 empty_dom。干脆 Portal 直接新的 mount 好了，反正 ctx 可以传递 
+          // 另外，根据 foundIdx 是否为 0 来移动，不为 0 就要移动到上面，但更可能是删除了东西，这样移动操作就太多了。所以，先删除，后判断为 0 更划算
+          // 另外，不为 0 除了可能是删除了东西以外，也可能是把上面的移动到了下面，这样先删除也不能优化。或许真的就是大家的从上从下双向判断的算法
           update_idx(foundRef, parentNode, referenceNode);
           return update(foundRef, parentState, v, ctx);
         }
@@ -221,7 +227,17 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       return rm;
     }
     {
-      const referenceNode = refNodeLast(ref);
+      // // unmount 在原处留一个 empty_dom 作为 referenceNode 最后再移除掉，似乎也行
+      // const referenceNode = refNodeLast(ref);
+      // const parentNode = env.parentNode(referenceNode)!;
+      // // 如果是 refNodeLast 则应该是 mount(parentNode, referenceNode.nextSibling, parentState, vnode, ctx)
+      // // 如果是 refNodeFirst 才是 mount(parentNode, referenceNode, parentState, vnode, ctx)
+      // // 不过 refNodeFirst 有缺点是会引起更多的元素重排
+      // const newRef = mount(parentNode, referenceNode, parentState, vnode, ctx);
+      // unmount(ref);
+      // return newRef;
+
+      const referenceNode = refNodeFirst(ref);
       const parentNode = env.parentNode(referenceNode)!;
       const newRef = mount(parentNode, referenceNode, parentState, vnode, ctx);
       unmount(ref);
@@ -261,15 +277,15 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
 }
 
 
-// function refNodeFirst<N>(ref: Ref<N>): N {
-//   if (ref.type === RefType.ITEM) {
-//     return ref.node;
-//   }
-//   if (ref.type === RefType.LIST) {
-//     return refNodeFirst(ref.refList[0]);
-//   }
-//   return refNodeFirst(ref.renderedRef);
-// }
+function refNodeFirst<N>(ref: Ref<N>): N {
+  if (ref.type === RefType.ITEM) {
+    return ref.node;
+  }
+  if (ref.type === RefType.LIST) {
+    return refNodeFirst(ref.refList[0]);
+  }
+  return refNodeFirst(ref.renderedRef);
+}
 function refNodeLast<N>(ref: Ref<N>): N {
   if (ref.type === RefType.ITEM) {
     return ref.node;

@@ -134,6 +134,11 @@ export const env: Env<N, S> = {
     for (const key in ps) {
       if (key in SPECIAL_ATTRS) continue;
       const value = ps[key];
+      // 1. namespace JSX 直接按 lib.dom.d.ts 生成，去除所有的 readonly 属性和非 on 开头的函数属性，即是 jsx 属性，而且通过 node[key]= 改变的属性也会显示在开发者工具上
+      //    于是直接用 node[key]= 替代 setAttribute 似乎不错。但是有些属性又会有问题，例如 svg.viewBox 是只读，真去 node.viewBox='xxx' 是无效的
+      //    但是 node.setAttribute('viewBox','xxx') 却又是有效的。另外，如果选择 setAttribute 而不是 node[key]= ，那 key 的名字又不完全跟 lib.dom 相同
+      //    似乎最划算的做法是 JSX 基于 lib.dom 生成，并增加特殊属性，运行时使用 node[key]= 并根据特殊属性 setAttribute 。也许太麻烦，还不如照抄 react/types
+      // 2. 重复 setAttribute 或 node[key]= 效率都远不如 js 内部判断相等，所以干脆所有属性都加判断相等
       if (key.startsWith('on')) {
         (node as any)[key.toLowerCase()] = value;
       } else {
