@@ -193,27 +193,36 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       // preact 的逻辑似乎是先不管顺序 update 完，然后统一去 appendChild/insertBefore
       const rl = ref as ListRef<N, S>;
       const refList = rl.refList.slice() as typeof rl.refList;
-      const lastNode = refNodeLast(refList[refList.length - 1]);
-      const parentNode = env.parentNode(lastNode)!;
-      const referenceNode = env.nextSibling(lastNode);
-      rl.refList = vnode.map((v: any) => {
+      let referenceNode = refNodeFirst(refList[refList.length - 1]);
+      const parentNode = env.parentNode(referenceNode)!;
+      const tasks: number[] = [];
+      let lastRef: Ref<N, S> | null = null;
+      rl.refList = vnode.map((v: any, newIdx) => {
+        const v_type = isComponent(v) ? RefType.MAGALETA : isNonEmptyArray(v) ? RefType.LIST : RefType.ITEM;
         let foundIdx = -1;
         const foundRef = refList.find((it, idx) => {
           foundIdx = idx;
           const rv: any = it.vnode;
-          return v?.key === rv?.key && v?.type === rv?.type;
+          return v_type === it.type && v?.key === rv?.key && v?.type === rv?.type;
         });
         if (foundRef) {
           refList.splice(foundIdx, 1);
+          if (foundIdx !== 0) {
+            tasks.push(newIdx);
+          }
           // 如果 foundIdx !== 0 说明要移动，直接移动到当前 refList[0] 的上面，或者上一个 ref 的下面
           // 这就是第一个 ref，不存在上一个 ref，则必须 refList[0] 。所以需要 refNodeFirst
           // 为 0 则不用移动。。。另外，因为定位基于其他的 ref，所以 Portal 必须要在原位留个 empty_dom。干脆 Portal 直接新的 mount 好了，反正 ctx 可以传递 
           // 另外，根据 foundIdx 是否为 0 来移动，不为 0 就要移动到上面，但更可能是删除了东西，这样移动操作就太多了。所以，先删除，后判断为 0 更划算
           // 另外，不为 0 除了可能是删除了东西以外，也可能是把上面的移动到了下面，这样先删除也不能优化。或许真的就是大家的从上从下双向判断的算法
-          update_idx(foundRef, parentNode, referenceNode);
-          return update(foundRef, parentState, v, ctx);
+          // 移动位置可以是弄个位置任务。即 foundIdx==0 时没有任务，不为 0 时
+          // update_idx(foundRef, parentNode, referenceNode);
+          return lastRef = update(foundRef, parentState, v, ctx);
         }
-        return mount(parentNode, referenceNode, parentState, v, ctx);
+        if (tasks.indexOf(newIdx-1) > -1) {
+          tasks.push(newIdx);
+        }
+        return lastRef = mount(parentNode, !lastRef ? refNodeFirst(refList[0]) : env.nextSibling(refNodeLast(lastRef)), parentState, v, ctx);
       }) as [any, ...any[]];
       unmount({ type: RefType.LIST, vnode: [null], refList });
       rl.vnode = vnode;
