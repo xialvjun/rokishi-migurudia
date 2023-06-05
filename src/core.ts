@@ -187,47 +187,183 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       return ri;
     }
     if (isNonEmptyArray(vnode) && isNonEmptyArray(ref.vnode)) {
-      // TODO: 也许需要优化。见分支 dev-0.1.0-update_idx
-      // 之前的 abcz 更新顺序 az-abz-abcz 的算法很简单，但无论真实顺序变没变，都dom重新整理了顺序，可能访问并变更了太多次 dom，性能可能有问题
-      // 而且浏览器开发者工具会收起所有的 dom(因为父元素的顺序都有改变)，开发体验不好
-      // preact 的逻辑似乎是先不管顺序 update 完，然后统一去 appendChild/insertBefore
       const rl = ref as ListRef<N, S>;
       const refList = rl.refList.slice() as typeof rl.refList;
-      let referenceNode = refNodeFirst(refList[refList.length - 1]);
-      const parentNode = env.parentNode(referenceNode)!;
-      const tasks: number[] = [];
-      let lastRef: Ref<N, S> | null = null;
-      rl.refList = vnode.map((v: any, newIdx) => {
-        const v_type = isComponent(v) ? RefType.MAGALETA : isNonEmptyArray(v) ? RefType.LIST : RefType.ITEM;
-        let foundIdx = -1;
-        const foundRef = refList.find((it, idx) => {
-          foundIdx = idx;
-          const rv: any = it.vnode;
-          return v_type === it.type && v?.key === rv?.key && v?.type === rv?.type;
-        });
-        if (foundRef) {
-          refList.splice(foundIdx, 1);
-          if (foundIdx !== 0) {
-            tasks.push(newIdx);
-          }
-          // 如果 foundIdx !== 0 说明要移动，直接移动到当前 refList[0] 的上面，或者上一个 ref 的下面
-          // 这就是第一个 ref，不存在上一个 ref，则必须 refList[0] 。所以需要 refNodeFirst
-          // 为 0 则不用移动。。。另外，因为定位基于其他的 ref，所以 Portal 必须要在原位留个 empty_dom。干脆 Portal 直接新的 mount 好了，反正 ctx 可以传递 
-          // 另外，根据 foundIdx 是否为 0 来移动，不为 0 就要移动到上面，但更可能是删除了东西，这样移动操作就太多了。所以，先删除，后判断为 0 更划算
-          // 另外，不为 0 除了可能是删除了东西以外，也可能是把上面的移动到了下面，这样先删除也不能优化。或许真的就是大家的从上从下双向判断的算法
-          // 移动位置可以是弄个位置任务。即 foundIdx==0 时没有任务，不为 0 时
-          // update_idx(foundRef, parentNode, referenceNode);
-          return lastRef = update(foundRef, parentState, v, ctx);
+      const lastNode = refNodeLast(rl);
+      const parentNode = env.parentNode(lastNode)!;
+      const lastNext = env.nextSibling(lastNode);
+      const propertyKeySet = new Set(['number', 'string', 'symbol']);
+      const hasKey = (v: any): v is {key:PropertyKey} => propertyKeySet.has(typeof v?.key)
+      const oldList: Ref<N,S>[] = [];
+      const oldMap = refList.reduce((acc, cv: any) => {
+        if (hasKey(cv.vnode)) {
+          acc[cv.vnode.key] = cv;
+        } else {
+          oldList.push(cv);
         }
-        if (tasks.indexOf(newIdx-1) > -1) {
-          tasks.push(newIdx);
+        return acc;
+      }, {} as any);
+      const newList = vnode.filter(v => !hasKey(v));
+      let ai = 0, bi = 0, ci=0, aj = oldList.length-1, bj = vnode.length-1, cj=newList.length-1;
+      const newRefList: Ref<N, S>[] = [];
+      const get_ref_type = (v: any) => isComponent(v) ? RefType.MAGALETA : isNonEmptyArray(v) ? RefType.LIST : RefType.ITEM;
+      const is_same_ref = (v: any, ref: any) => get_ref_type(v) === ref.type && v?.type === ref.vnode?.type;
+      while (ai <= aj && bi <= bj) {
+        let aref = oldList[ai];
+        let bv = vnode[bi];
+        if (hasKey(bv)) {
+          update_idx(oldMap[bv.key], parentNode, refNodeFirst(aref))
+          newRefList.push(update(oldMap[bv.key], parentState, bv, ctx));
+          oldMap[bv.key]=null;
+          bi++;
+          continue;
         }
-        return lastRef = mount(parentNode, !lastRef ? refNodeFirst(refList[0]) : env.nextSibling(refNodeLast(lastRef)), parentState, v, ctx);
-      }) as [any, ...any[]];
-      unmount({ type: RefType.LIST, vnode: [null], refList });
-      rl.vnode = vnode;
-      return rl;
+        if (is_same_ref(bv, aref)) {
+          newRefList.push(update(aref, parentState, bv, ctx));
+          ai++;
+          bi++;
+          ci++;
+          continue;
+        }
+        if (aj - ai > cj - ci) {
+          unmount(aref);
+          ai++;
+          continue;
+        } else if (aj - ai < cj - ci) {
+          mount(parentNode, refNodeFirst(aref), parentState, bv, ctx);
+          bi++;
+          ci++;
+          continue;
+        } else {
+          // mount(parentNode, refNodeFirst(aref), parentState, bv, ctx);
+          // unmount(aref);
+          update(aref, parentState, bv, ctx);
+          ai++;
+          bi++;
+          ci++;
+          continue;
+        }
+        // let xi = ai, xj = aj, yi = ci, yj = cj;
+        // while (xi<=xj && yi<=yj && xj - xi !== yj - yi) {
+        //   if (xj - xi > yj - yi) {
+            
+        //   }
+        // }
+      }
     }
+    // if (isNonEmptyArray(vnode) && isNonEmptyArray(ref.vnode)) {
+    //   // TODO: 也许需要优化。见分支 dev-0.1.0-update_idx
+    //   // 之前的 abcz 更新顺序 az-abz-abcz 的算法很简单，但无论真实顺序变没变，都dom重新整理了顺序，可能访问并变更了太多次 dom，性能可能有问题
+    //   // 而且浏览器开发者工具会收起所有的 dom(因为父元素的顺序都有改变)，开发体验不好
+    //   // preact 的逻辑似乎是先不管顺序 update 完，然后统一去 appendChild/insertBefore
+    //   const rl = ref as ListRef<N, S>;
+    //   const refList = rl.refList.slice() as typeof rl.refList;
+
+
+    //   const lastNode = refNodeLast(rl);
+    //   const parentNode = env.parentNode(lastNode);
+    //   const lastNext = env.nextSibling(lastNode);
+      
+    //   // <><img/><audio/></> 变为 <><audio/><img/></> 会是全部重新创建
+    //   // <><img key="a"/><audio/></> 变为 <><audio/><img key="a"/></> 会复用 img，audio 理论上可以复用
+    //   // <><img key="a"/><audio/><video/></> 变为 <><audio/><video/><img key="a"/></> 会复用 img，audio+video 理论上也可以复用
+    //   // <><img key="a"/><audio/><video/></> 变为 <><video/><audio/><img key="a"/></> 会复用 img，audio/video 不会复用
+    //   // 整体逻辑也就是 只有key才会移动，没有 key 的都不移动，只是没有改变顺序的话会尽量复用（尽量复用就是每次游标变化后都优先从上从下对比）
+    //   let ai = 0, bi = 0, aj = vnode.length-1, bj = refList.length-1;
+    //   const get_ref_type = (v: any) => isComponent(v) ? RefType.MAGALETA : isNonEmptyArray(v) ? RefType.LIST : RefType.ITEM;
+    //   const is_same_ref = (v: any, ref: any) => get_ref_type(v) === ref.type && v?.key === ref.vnode?.key && v?.type === ref.vnode?.type;
+    //   const propertyKeySet = new Set(['number', 'string', 'symbol']);
+    //   const hasKey = (v: any) => propertyKeySet.has(typeof v?.key)
+    //   const noKeyOld: Ref<N,S>[] = [];
+    //   const refMap = refList.reduce((acc, cv: any) => {
+    //     if (hasKey(cv.vnode)) {
+    //       acc[cv.vnode.key] = cv;
+    //     } else {
+    //       noKeyOld.push(cv);
+    //     }
+    //     return acc;
+    //   }, {} as any);
+    //   while (ai <= aj && bi <= bj) {
+    //     let av = vnode[ai];
+    //     let ref = refList[bi];
+    //     if (is_same_ref(av, ref)) {
+    //       update(ref, parentState, av, ctx);
+    //       ai++;
+    //       bi++;
+    //       continue;
+    //     }
+
+    //     av = vnode[aj];
+    //     ref = refList[bj];
+    //     if (is_same_ref(av, refList[bj])) {
+    //       update(refList[bj], parentState, av, ctx);
+    //       aj--;
+    //       bj--;
+    //       continue;
+    //     }
+    //   }
+
+
+    //   let referenceNode = refNodeFirst(refList[0]);
+    //   const parentNode = env.parentNode(referenceNode)!;
+    //   // const tasks: number[] = [];
+    //   let lastRef: Ref<N, S> | null = null;
+
+    //   let oldRefList = rl.refList.slice();
+    //   const tasks = vnode.map((v:any) => {
+    //     const v_type = isComponent(v) ? RefType.MAGALETA : isNonEmptyArray(v) ? RefType.LIST : RefType.ITEM;
+    //     let foundIdx = -1;
+    //     const foundRef = refList.find((it, idx) => {
+    //       foundIdx = idx;
+    //       const rv: any = it.vnode;
+    //       return v_type === it.type && v?.key === rv?.key && v?.type === rv?.type;
+    //     });
+    //     if (foundRef) {
+    //       oldRefList.push(foundRef);
+    //       refList.splice(foundIdx, 1);
+    //       return { foundRef, v };
+    //       // return { foundRef, update: () => update(foundRef, parentState, v, ctx) };
+    //     }
+    //     return { foundRef, v };
+    //     // return { foundRef, update: (rn: N|null) => mount(parentNode, rn, parentState, v, ctx) };
+    //   });
+    //   oldRefList = oldRefList.filter(it => refList.indexOf(it) === -1);
+    //   unmount({ type: RefType.LIST, vnode: [null], refList });
+    //   tasks.map((it, newIdx) => {
+
+    //   });
+
+    //   rl.refList = vnode.map((v: any, newIdx) => {
+    //     const v_type = isComponent(v) ? RefType.MAGALETA : isNonEmptyArray(v) ? RefType.LIST : RefType.ITEM;
+    //     let foundIdx = -1;
+    //     const foundRef = refList.find((it, idx) => {
+    //       foundIdx = idx;
+    //       const rv: any = it.vnode;
+    //       return v_type === it.type && v?.key === rv?.key && v?.type === rv?.type;
+    //     });
+    //     if (foundRef) {
+    //       refList.splice(foundIdx, 1);
+    //       if (foundIdx !== 0) {
+    //         tasks.push();
+    //       }
+    //       // 如果 foundIdx !== 0 说明要移动，直接移动到当前 refList[0] 的上面，或者上一个 ref 的下面
+    //       // 这就是第一个 ref，不存在上一个 ref，则必须 refList[0] 。所以需要 refNodeFirst
+    //       // 为 0 则不用移动。。。另外，因为定位基于其他的 ref，所以 Portal 必须要在原位留个 empty_dom。干脆 Portal 直接新的 mount 好了，反正 ctx 可以传递 
+    //       // 另外，根据 foundIdx 是否为 0 来移动，不为 0 就要移动到上面，但更可能是删除了东西，这样移动操作就太多了。所以，先删除，后判断为 0 更划算
+    //       // 另外，不为 0 除了可能是删除了东西以外，也可能是把上面的移动到了下面，这样先删除也不能优化。或许真的就是大家的从上从下双向判断的算法
+    //       // 移动位置可以是弄个位置任务。即 foundIdx==0 时没有任务，不为 0 时
+    //       // update_idx(foundRef, parentNode, referenceNode);
+    //       return lastRef = update(foundRef, parentState, v, ctx);
+    //     }
+    //     if (tasks.indexOf(newIdx-1) > -1) {
+    //       tasks.push(newIdx);
+    //     }
+    //     return lastRef = mount(parentNode, !lastRef ? referenceNode : env.nextSibling(refNodeLast(lastRef)), parentState, v, ctx);
+    //   }) as [any, ...any[]];
+    //   unmount({ type: RefType.LIST, vnode: [null], refList });
+    //   rl.vnode = vnode;
+    //   return rl;
+    // }
     if (isComponent(vnode) && isComponent(ref.vnode) && vnode.type === ref.vnode.type) {
       const rm = ref as MagaletaRef<N, S>;
       const renderedVnode = rm.render(vnode.props);
