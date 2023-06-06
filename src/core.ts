@@ -188,69 +188,201 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
     }
     if (isNonEmptyArray(vnode) && isNonEmptyArray(ref.vnode)) {
       const rl = ref as ListRef<N, S>;
-      const refList = rl.refList.slice() as typeof rl.refList;
-      const lastNode = refNodeLast(rl);
+
+      const lastNode = refNodeLast(ref);
       const parentNode = env.parentNode(lastNode)!;
       const lastNext = env.nextSibling(lastNode);
-      const propertyKeySet = new Set(['number', 'string', 'symbol']);
-      const hasKey = (v: any): v is {key:PropertyKey} => propertyKeySet.has(typeof v?.key)
-      const oldList: Ref<N,S>[] = [];
-      const oldMap = refList.reduce((acc, cv: any) => {
-        if (hasKey(cv.vnode)) {
-          acc[cv.vnode.key] = cv;
-        } else {
-          oldList.push(cv);
-        }
-        return acc;
-      }, {} as any);
-      const newList = vnode.filter(v => !hasKey(v));
-      let ai = 0, bi = 0, ci=0, aj = oldList.length-1, bj = vnode.length-1, cj=newList.length-1;
-      const newRefList: Ref<N, S>[] = [];
-      const get_ref_type = (v: any) => isComponent(v) ? RefType.MAGALETA : isNonEmptyArray(v) ? RefType.LIST : RefType.ITEM;
-      const is_same_ref = (v: any, ref: any) => get_ref_type(v) === ref.type && v?.type === ref.vnode?.type;
-      while (ai <= aj && bi <= bj) {
-        let aref = oldList[ai];
-        let bv = vnode[bi];
-        if (hasKey(bv)) {
-          update_idx(oldMap[bv.key], parentNode, refNodeFirst(aref))
-          newRefList.push(update(oldMap[bv.key], parentState, bv, ctx));
-          oldMap[bv.key]=null;
-          bi++;
+      let referenceNode = lastNext;
+
+      const oldRefList = rl.refList.slice();
+      const oldRefSet = new Set(oldRefList);
+      let oldStart = 0, newStart =0, oldEnd = oldRefList.length - 1, newEnd = vnode.length - 1;
+      let oldRefKeyIdx: Map<any, number> = null!;
+      const newRefList = Array<Ref<N, S>>(vnode.length);
+      // 如果 while 条件里还加上 `oldStart <= oldEnd &&`，则在 while 循环结束后，可能 newVnode 还没用完，还要继续 mount(newVnode)
+      // 所以这里去掉此条件，直接在下面的判断条件里加上 ` && oldRefSet.delete(oldRef)` 判断 oldRef 还没被用掉
+      // --算了，下面判断太多了，除了 ` && oldRefSet.delete(oldRef)` 外，还有获取 refNodeFirst(oldRefList[oldStart]) 要判断
+      while (oldStart <= oldEnd && newStart <= newEnd) {
+        // 下面有设置 oldRefList[i] = null 是因为从 keyMap 中抽取，导致 oldRefList 中出现空的
+        // 空的因为已经被用了，所以要跳过，而且得最先跳过，后续才能按顺序匹配，避免无意义地移动 dom
+        if (oldRefList[oldStart] === null) {
+          oldStart++;
           continue;
         }
-        if (is_same_ref(bv, aref)) {
-          newRefList.push(update(aref, parentState, bv, ctx));
-          ai++;
-          bi++;
-          ci++;
+        if (oldRefList[oldEnd] === null) {
+          oldEnd--;
           continue;
         }
-        if (aj - ai > cj - ci) {
-          unmount(aref);
-          ai++;
-          continue;
-        } else if (aj - ai < cj - ci) {
-          mount(parentNode, refNodeFirst(aref), parentState, bv, ctx);
-          bi++;
-          ci++;
-          continue;
-        } else {
-          // mount(parentNode, refNodeFirst(aref), parentState, bv, ctx);
-          // unmount(aref);
-          update(aref, parentState, bv, ctx);
-          ai++;
-          bi++;
-          ci++;
-          continue;
-        }
-        // let xi = ai, xj = aj, yi = ci, yj = cj;
-        // while (xi<=xj && yi<=yj && xj - xi !== yj - yi) {
-        //   if (xj - xi > yj - yi) {
-            
-        //   }
+
+        // 直接按顺序匹配，不会移动 dom ，而从 keyMap 中获取的，就得移动 dom。所以优先不判断 key
+        let oldRef = oldRefList[oldStart];
+        let newVnode = vnode[newStart];
+        // // 如果 oldRefSet.has(oldRefList[oldStart]) 为 false，说明 oldStart 已经大于 oldEnd，甚至已经大于 oldRefList.length
+        // if (!oldRefSet.has(oldRef)) {
+        //   // 不用担心 newRefList[newStart-1] 为空，为空说明 newStart 为 0，那时候 oldRef 肯定有
+        //   referenceNode = env.nextSibling(refNodeLast(newRefList[newStart-1]));
+        //   newRefList[newStart] = mount(parentNode, referenceNode, parentState, newVnode, ctx);
+        //   newStart++;
+        //   continue;
         // }
+
+        // doSuit 如果只比较 key，则对于有 key 的，key 相同但 type 不同的，不复用理所当然
+        // 但对于没有 key 的，它 key 都为 undefined，key 相同，type 不同，此时应该从反方向
+        if (doSuit(oldRef.vnode, newVnode)) {
+          newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
+          oldRefSet.delete(oldRef);
+          oldStart++;
+          newStart++;
+          continue;
+        }
+
+        oldRef = oldRefList[oldEnd];
+        newVnode = vnode[newEnd];
+        if (doSuit(oldRef.vnode, newVnode)) {
+          newRefList[newEnd] = update(oldRef, parentState, newVnode, ctx);
+          oldRefSet.delete(oldRef);
+          oldEnd--;
+          newEnd--;
+          continue;
+        }
+
+        if (!oldRefKeyIdx) {
+          oldRefKeyIdx = new Map();
+          for (let i = oldStart; i <= oldEnd; i++) {
+            const v = oldRefList[i].vnode;
+            if (hasKey(v)) {
+              oldRefKeyIdx.set(v.key, i);
+            }
+          }
+        }
+
+        newVnode = vnode[newStart];
+        oldRef = oldRefList[oldStart];
+        if (hasKey(newVnode)) {
+          if (oldRefKeyIdx.has(newVnode.key)) {
+            const oldRefIdx = oldRefKeyIdx.get(newVnode.key)!;
+            // oldRefIdx 与 oldStart 有可能相同，是 key 相同但 type 不同。所以应该先移动后置空。呃，其实此时不需要移动
+            oldRef = oldRefList[oldRefIdx];
+            // 如果 oldRefSet.has(oldRef) 为 false，说明 key 有重复
+            if (oldRefSet.has(oldRef)) {
+              if (oldRefIdx !== oldStart) {
+                update_idx(oldRef, parentNode, refNodeFirst(oldRefList[oldStart]));
+              }
+              oldRefList[oldRefIdx] = null!;
+              newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
+              oldRefSet.delete(oldRef);
+
+              if (oldStart <= oldRefIdx) {
+                // 这段 if(oldStart <= oldRefIdx) 适用于这种情况
+                // xabcdefgy
+                // xgbcdefay
+                // 否则，适用于
+                // xabcdefgy
+                // xgabcdefy
+                // 在大部分元素顺序未变的时候，这个判断极大地提高了效率，限制 oldStart++，从而充分利用了上面的“按顺序匹配不移动DOM”
+                oldStart++;
+              }
+            }
+            newStart++;
+            continue;
+          }
+          // oldRef = oldRefList[oldStart];
+          referenceNode = refNodeFirst(oldRef);
+          // referenceNode = env.nextSibling(refNodeLast(newRefList[newStart-1]));
+          newRefList[newStart] = mount(parentNode, referenceNode, parentState, newVnode, ctx);
+          newStart++;
+          continue;
+        } else {
+          if (hasKey(oldRef.vnode)) {
+            oldStart++;
+            continue;
+          }
+          newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
+          oldRefSet.delete(oldRef);
+          oldStart++;
+          newStart++;
+          continue;
+        }
       }
+      referenceNode = undefined!;
+      while (newStart <= newEnd) {
+        if (referenceNode === undefined) {
+          referenceNode = env.nextSibling(refNodeLast(newRefList[newStart-1]));
+        }
+        newRefList[newStart] = mount(parentNode, referenceNode, parentState, vnode[newStart], ctx);
+        newStart++;
+      }
+      oldRefSet.forEach(unmount);
+      rl.refList = newRefList as any;
+      rl.vnode = vnode;
+      return rl;
     }
+    // if (isNonEmptyArray(vnode) && isNonEmptyArray(ref.vnode)) {
+    //   const rl = ref as ListRef<N, S>;
+    //   const refList = rl.refList.slice() as typeof rl.refList;
+    //   const lastNode = refNodeLast(rl);
+    //   const parentNode = env.parentNode(lastNode)!;
+    //   const lastNext = env.nextSibling(lastNode);
+    //   const oldList: Ref<N,S>[] = [];
+    //   const oldKeySet = new Set<Ref<N,S>>();
+    //   const oldMap = refList.reduce((acc, cv: any) => {
+    //     if (hasKey(cv.vnode)) {
+    //       oldKeySet.add(cv);
+    //       // acc[cv.vnode.key] = cv;
+    //       acc.set(cv.vnode.key, cv);
+    //     } else {
+    //       oldList.push(cv);
+    //     }
+    //     return acc;
+    //   }, new Map());
+    //   const newList = vnode.filter(v => !hasKey(v));
+    //   let ai = 0, bi = 0, ci=0, aj = oldList.length-1, bj = vnode.length-1, cj=newList.length-1;
+    //   const newRefList: Ref<N, S>[] = [];
+    //   const get_ref_type = (v: any) => isComponent(v) ? RefType.MAGALETA : isNonEmptyArray(v) ? RefType.LIST : RefType.ITEM;
+    //   const is_same_ref = (v: any, ref: any) => get_ref_type(v) === ref.type && v?.type === ref.vnode?.type;
+    //   while (ai <= aj && bi <= bj) {
+    //     let aref = oldList[ai];
+    //     let bv = vnode[bi];
+    //     if (hasKey(bv)) {
+    //       update_idx(oldMap[bv.key], parentNode, refNodeFirst(aref))
+    //       newRefList.push(update(oldMap[bv.key], parentState, bv, ctx));
+    //       oldMap[bv.key]=null;
+    //       bi++;
+    //       continue;
+    //     }
+    //     if (is_same_ref(bv, aref)) {
+    //       newRefList.push(update(aref, parentState, bv, ctx));
+    //       ai++;
+    //       bi++;
+    //       ci++;
+    //       continue;
+    //     }
+    //     if (aj - ai > cj - ci) {
+    //       unmount(aref);
+    //       ai++;
+    //       continue;
+    //     } else if (aj - ai < cj - ci) {
+    //       mount(parentNode, refNodeFirst(aref), parentState, bv, ctx);
+    //       bi++;
+    //       ci++;
+    //       continue;
+    //     } else {
+    //       // mount(parentNode, refNodeFirst(aref), parentState, bv, ctx);
+    //       // unmount(aref);
+    //       update(aref, parentState, bv, ctx);
+    //       ai++;
+    //       bi++;
+    //       ci++;
+    //       continue;
+    //     }
+    //     // let xi = ai, xj = aj, yi = ci, yj = cj;
+    //     // while (xi<=xj && yi<=yj && xj - xi !== yj - yi) {
+    //     //   if (xj - xi > yj - yi) {
+            
+    //     //   }
+    //     // }
+    //   }
+    // }
     // if (isNonEmptyArray(vnode) && isNonEmptyArray(ref.vnode)) {
     //   // TODO: 也许需要优化。见分支 dev-0.1.0-update_idx
     //   // 之前的 abcz 更新顺序 az-abz-abcz 的算法很简单，但无论真实顺序变没变，都dom重新整理了顺序，可能访问并变更了太多次 dom，性能可能有问题
@@ -451,6 +583,11 @@ function refNodeLast<N>(ref: Ref<N>): N {
 //   }
 //   return refNodeAll(ref.renderedRef, nodes);
 // }
+
+// const propertyKeySet = new Set(['number', 'string', 'symbol']);
+// const hasKey = (v: any): v is {key:PropertyKey} => propertyKeySet.has(typeof v?.key)
+const hasKey = (v: any): v is {key:PropertyKey} => v?.key !== undefined;
+const doSuit = (a: any, b: any) => a?.key === b?.key && a?.type === b?.type
 
 
 export type Component<P extends {} = {}, C extends {} = {}> = (init: P, ins: ReturnType<typeof createInstance<P, C>>) => (props: P) => Vnode;

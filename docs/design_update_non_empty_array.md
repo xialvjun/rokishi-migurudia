@@ -69,7 +69,10 @@ abcdefg
 axycdbg   这里更应该 cd 复用，但是
 
 abcdefg   理应是 插入一个 x，插入一个 h
-axcdefhg  但只是按序号和长度匹配的话，这里 bx对不上，对bc，然后bc后面的长度相同，但bc对不上，于是bc全消，cd全消，。。。只剩个g匹配
+axcdefhg  但只是按序号和长度匹配的话，这里 bx对不上，对bc，然后bc后面的长度相同，但bc对不上，于是bc全消，cd全消，。。。只剩个g匹配 
+// 等下，似乎 peek 是可以的。可以前 peek 1位，后 peek 1 位，然后前 peek 2 位，后 peek 两位，
+abcdefg
+axybcdg
 
 abcdefg   理应是 插入一个 xyza 或者 axyz 都可以
 axyzabcdefg
@@ -78,7 +81,14 @@ aebcd
 bcdae  这里不应该有 ae 移动，只有 ae 删除，然后新建 ae
 
 aebcd
-cdaeb 这里李虎又是 删除cd后创建cd
+cdaeb 这里却又是 删除cd后创建cd
+
+xabcdefgy
+xgbcdefay
+
+...... 太复杂了，放弃了，直接认为没有 key 的必须一一对应。即 abcde axbcd 就只有 a 复用； abcde axycde 有 acde 复用； abcde axbcde 有 abcde 复用；而 abcde axbcy 只有 a 复用
+
+有 key 的，被复用了的，就一定要移动吗？不。所以应该一一对应的过程算法里也包括有 key 的，无非有 key 的没对上时，不立即 unmount
 
 ```ts
 
