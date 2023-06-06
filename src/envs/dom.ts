@@ -13,8 +13,8 @@ function classX(value: any) {
   return list.join(' ');
   function recursive(v: any) {
     if (!v) return;
-    if (typeof v === 'string' || v instanceof String) {
-      return list.push(v + '');
+    if (typeof v === 'string') {
+      return list.push(v);
     }
     if (Array.isArray(v)) {
       return v.forEach(recursive);
@@ -32,7 +32,7 @@ function styleX(value: any) {
   function recursive(v: any) {
     if (!v) return;
     if (typeof v === 'string') {
-      return list.push(v + '');
+      return list.push(v);
     }
     if (Array.isArray(v)) {
       return v.forEach(recursive);
@@ -55,7 +55,7 @@ function setDOMAttribute(node: DomElement, key: string, value: any, namespace: s
   } else if (namespace) {
     node.setAttributeNS(namespace, key, value);
   } else {
-    value = key === 'class' ? classX(value) : key === 'style' ? styleX(value) : value;
+    value = key === 'className' ? classX(value) : key === 'style' ? styleX(value) : value;
     node.setAttribute(key, value);
   }
 }

@@ -4,24 +4,21 @@ const Row = defineComponent<{ item: BussItem; selected: boolean; actions: BussAc
   const onselect = () => ins.props.actions.select(ins.props.item.id);
   const onremove = () => ins.props.actions.remove(ins.props.item.id);
   const memo = useMemo();
+  // memo.render = (v: any) => v;
   return memo.render(props => {
     const { selected, item } = props;
     return (
       <tr className={selected ? 'danger' : ''}>
         <td className="col-md-1">{item.id}</td>
         <td className="col-md-4">
-          <a onclick={onselect}>{item.label}</a>
+          <a onClick={onselect}>{item.label}</a>
         </td>
         <td className="col-md-1">
-          <a onclick={onremove} oncanplay={memo('a', e => {
-            console.log(e.target)
-          })}>
+          <a onClick={onremove}>
             <span className="glyphicon glyphicon-remove" aria-hidden="true" />
           </a>
         </td>
-        <td className="col-md-6" rowSpan={3} colSpan={2} />
-        <img src='adsf' alt='asddsg' srcset='asdsgasdg' />
-        <audio src='asdfds'></audio>
+        <td className="col-md-6" />
       </tr>
     );
   });
@@ -31,7 +28,7 @@ const Button = defineComponent<{ id: string; cb: ()=>any; title: string }>(_ => 
   return props => {
     return (
       <div className="col-sm-6 smallpad">
-        <button type="button" className="btn btn-primary btn-block" id={props.id} onclick={props.cb}>
+        <button type="button" className="btn btn-primary btn-block" id={props.id} onClick={props.cb}>
           {props.title}
         </button>
       </div>
