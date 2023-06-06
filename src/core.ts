@@ -192,7 +192,7 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       const lastNode = refNodeLast(ref);
       const parentNode = env.parentNode(lastNode)!;
       const lastNext = env.nextSibling(lastNode);
-      let referenceNode = lastNext;
+      let referenceNode: N|null = undefined!;
 
       const oldRefList = rl.refList.slice();
       const oldRefSet = new Set(oldRefList);
@@ -279,7 +279,8 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
                 // 否则，适用于
                 // xabcdefgy
                 // xgabcdefy
-                // 在大部分元素顺序未变的时候，这个判断极大地提高了效率，限制 oldStart++，从而充分利用了上面的“按顺序匹配不移动DOM”
+                // 在大部分元素顺序未变的时候，这个判断极大地提高了效率，限制 oldStart++，从而充分利用了上面的“按顺序匹配不移动DOM”，即
+                // 找到的东西在 oldStart 前面，则假如说元素不缺，相对顺序也没变，则就是 oldStart 比 new 要偏靠后，所以不加 oldStart 让 newStart 赶上来
                 oldStart++;
               }
             }
