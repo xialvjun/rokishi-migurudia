@@ -55,7 +55,10 @@ function setDOMAttribute(node: DomElement, key: string, value: any, namespace: s
   } else if (namespace) {
     node.setAttributeNS(namespace, key, value);
   } else {
-    value = key === 'className' ? classX(value) : key === 'style' ? styleX(value) : value;
+    if (key === 'className') {
+      key = 'class';
+    }
+    value = key === 'class' ? classX(value) : key === 'style' ? styleX(value) : value;
     node.setAttribute(key, value);
   }
 }
@@ -191,6 +194,7 @@ export const env: Env<N, S> = {
       if (key in SPECIAL_ATTRS) {
         const nv = nps[key];
         const ov = ops[key];
+        if (nv === ov) continue;
         // SPECIAL_ATTRS 的判断相同的逻辑放在 它自己 里面，因为可能有的属性，我们希望它不用判断相同，每次 render 都必须刷新，例如 value
         SPECIAL_ATTRS[key].update(node, nv, ov);
       }
@@ -200,6 +204,7 @@ export const env: Env<N, S> = {
       if (key in SPECIAL_ATTRS) {
         const nv = nps[key];
         const ov = ops[key];
+        if (nv === ov) continue;
         SPECIAL_ATTRS[key].update(node, nv, ov);
       }
     }
