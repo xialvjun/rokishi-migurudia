@@ -191,11 +191,11 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
 
       const lastNode = refNodeLast(ref);
       const parentNode = env.parentNode(lastNode)!;
-      // const lastNext = env.nextSibling(lastNode);
+      const lastNext = env.nextSibling(lastNode);
       let referenceNode: N|null = undefined!;
 
-      const oldRefList = rl.refList.slice();
-      const oldRefSet = new Set(oldRefList);
+      const oldRefList: (Ref|null)[] = rl.refList.slice();
+      // const oldRefSet = new Set(oldRefList);
       let oldStart = 0, newStart =0, oldEnd = oldRefList.length - 1, newEnd = vnode.length - 1;
       let oldRefKeyIdx: Map<any, number> = null!;
       const newRefList = Array<Ref<N, S>>(vnode.length);
@@ -211,7 +211,8 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
           oldStart++;
           continue;
         }
-        if (oldRefList[oldEnd] === null) {
+        const isOldOver = oldStart > oldEnd;
+        if (!isOldOver && oldRefList[oldEnd] === null) {
           oldEnd--;
           continue;
         }
@@ -231,28 +232,30 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
 
         // doSuit 如果只比较 key，则对于有 key 的，key 相同但 type 不同的，不复用理所当然
         // 但对于没有 key 的，它 key 都为 undefined，key 相同，type 不同，此时应该从反方向
-        if (oldRefSet.has(oldRef) && doSuit(oldRef.vnode, newVnode)) {
+        if (oldRef && doSuit(oldRef.vnode, newVnode)) {
           newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
-          oldRefSet.delete(oldRef);
-          oldStart++;
           newStart++;
+          oldRefList[oldStart] = null;
+          // 已经置为 null 了就不要改 old 的游标了，避免上面判断 ===null 重复改变游标
+          // 不，单纯依赖上面判断 ===null 来改变游标，除了会让 oldStart 超出 oldRefList 长度以外，还会让 oldEnd 指向已被跳过的 oldVnode
+          // oldStart++;
           continue;
         }
 
         oldRef = oldRefList[oldEnd];
         newVnode = vnode[newEnd];
-        if (oldRefSet.has(oldRef) && doSuit(oldRef.vnode, newVnode)) {
+        if (oldRef && doSuit(oldRef.vnode, newVnode)) {
           newRefList[newEnd] = update(oldRef, parentState, newVnode, ctx);
-          oldRefSet.delete(oldRef);
-          oldEnd--;
           newEnd--;
+          oldRefList[oldEnd] = null;
+          // oldEnd--;
           continue;
         }
 
         if (!oldRefKeyIdx) {
           oldRefKeyIdx = new Map();
           for (let i = oldStart; i <= oldEnd; i++) {
-            const v = oldRefList[i].vnode;
+            const v = oldRefList[i]!.vnode;
             if (hasKey(v)) {
               oldRefKeyIdx.set(v.key, i);
             }
@@ -260,8 +263,11 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
         }
 
         newVnode = vnode[newStart];
-        oldRef = oldRefList[oldStart];
-        // TODO: 此时 oldRef 可能已经不存在了，或者 oldRefSet.has(oldRef) === false 了，因为 oldStart > oldEnd，但要复用 oldRefKeyIdx
+        const oldRefStart = oldRefList[oldStart];
+        oldRef = oldRefStart;
+        // ? 下面的部分 oldRef=oldRefList[oldStart] 可能已经不存在了，不存在不是指 ===null，而是 ===undefined
+        // ? 或者 oldRefSet.has(oldRef)===false 了，因为 oldStart>oldEnd，甚至已经超出了数组长度，按顺序匹配的 old 资源已经复用完了
+        // ? 但按 key 复用的可能在前面有遗漏的，仍需要继续等待 newStart++
 
         // if (newHasKey && sameKey) {
         //   // update_idx ( oldRef )
@@ -287,24 +293,29 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
         // } else if (newHasKey) {}
         // else if (oldHasKey) {} else {}
 
-        if (!oldRefSet.has(oldRef)) {
-          referenceNode = env.nextSibling(refNodeLast(newRefList[newStart-1]));
+        if (!oldRefStart && !referenceNode) {
+          // 当 key 重复时，后一个 newVnode 会被忽略，则 newRefList[newStart-1] 可能为空，所以下面的不行。
+          // 还是不忽略 newVnode 避免 rl.vnode.length!==rl.refList.length 。但仍然根据 newEnd 定位
+          // referenceNode = env.nextSibling(refNodeLast(newRefList[newStart-1]));
+          referenceNode = newEnd < vnode.length - 1 ? refNodeFirst(newRefList[newEnd+1]) : lastNext;
         }
-        const oldStartHasKey = hasKey(oldRef.vnode);
         if (hasKey(newVnode) && oldRefKeyIdx.has(newVnode.key)) {
+          const oldStartHasKey = !!oldRef && hasKey(oldRef.vnode);
           const oldRefIdx = oldRefKeyIdx.get(newVnode.key)!;
           // oldRefIdx 与 oldStart 有可能相同，是 key 相同但 type 不同。所以应该先移动后置空。呃，其实此时不需要移动
           oldRef = oldRefList[oldRefIdx];
-          // 如果 oldRefSet.has(oldRef) 为 false，说明 key 有重复
-          if (oldRefSet.has(oldRef)) {
+          // 如果 oldRefSet.has(oldRef) 为 false，说明 key 有重复，此时无论有没有 newRefList[newStart] = update() 都 newStart++
+          if (oldRef) {
             if (oldRefIdx !== oldStart) {
-              update_idx(oldRef, parentNode, oldRefSet.has(oldRef) ? refNodeFirst(oldRef) : referenceNode);
+              update_idx(oldRef, parentNode, referenceNode || refNodeFirst(oldRefStart!));
             }
-            oldRefList[oldRefIdx] = null!;
             newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
-            oldRefSet.delete(oldRef);
+            newStart++;
+            oldRefList[oldRefIdx] = null!;
+            // oldRefSet.delete(oldRef);
 
-            if (oldStartHasKey && oldStart <= oldRefIdx) {
+            // 应该是 oldStart < oldRefIdx 而不是 oldStart <= oldRefIdx。等于的时候不改变游标，避免最上方 ===null 重复改变游标
+            if (oldStartHasKey && oldStart < oldRefIdx) {
               // 这段 if(oldStart <= oldRefIdx) 适用于这种情况
               // xabcdefgy
               // xgbcdefay
@@ -315,58 +326,88 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
               // 找到的东西在 oldStart 前面，则假如说元素不缺，相对顺序也没变，则就是 oldStart 比 new 要偏靠后，所以不加 oldStart 让 newStart 赶上来
               oldStart++;
             }
+          } else {
+            // 这里可以选择是 mount newVnode 还是忽略这个 key 已经重复的 vnode 。如果忽略，那不能用 refNodeLast(newRefList[newStart-1]) 来定位
+            // 且最后的 rl.refList=newRefList.filter(v=>v)...还是不忽略吧，不然 rl.vnode 就与 rl.refList 就不等长了
+            // 可以在 dev 模式下提示错误
+            newRefList[newStart] = mount(parentNode, referenceNode || refNodeFirst(oldRefStart!), parentState, newVnode, ctx);
+            newStart++;
+            if (oldStartHasKey && oldStart < oldRefIdx) {
+              oldStart++;
+            }
           }
-          newStart++;
+          // // 本来 newStart++ 应放在上面 newRefList[newStart] = update() 那句下面，但是
+          // newStart++;
           continue;
         }
-
-        // const oldStartHasKey = hasKey(oldRef.vnode);
-        if (hasKey(newVnode)) {
-          if (oldRefKeyIdx.has(newVnode.key)) {
-            const oldRefIdx = oldRefKeyIdx.get(newVnode.key)!;
-            // oldRefIdx 与 oldStart 有可能相同，是 key 相同但 type 不同。所以应该先移动后置空。呃，其实此时不需要移动
-            oldRef = oldRefList[oldRefIdx];
-            // 如果 oldRefSet.has(oldRef) 为 false，说明 key 有重复
-            if (oldRefSet.has(oldRef)) {
-              if (oldRefIdx !== oldStart) {
-                update_idx(oldRef, parentNode, refNodeFirst(oldRefList[oldStart]));
-              }
-              oldRefList[oldRefIdx] = null!;
-              newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
-              oldRefSet.delete(oldRef);
-
-              if (oldStartHasKey && oldStart <= oldRefIdx) {
-                // 这段 if(oldStart <= oldRefIdx) 适用于这种情况
-                // xabcdefgy
-                // xgbcdefay
-                // 否则，适用于
-                // xabcdefgy
-                // xgabcdefy
-                // 在大部分元素顺序未变的时候，这个判断极大地提高了效率，限制 oldStart++，从而充分利用了上面的“按顺序匹配不移动DOM”，即
-                // 找到的东西在 oldStart 前面，则假如说元素不缺，相对顺序也没变，则就是 oldStart 比 new 要偏靠后，所以不加 oldStart 让 newStart 赶上来
-                oldStart++;
-              }
-            }
-            newStart++;
-            continue;
-          }
-          // oldRef = oldRefList[oldStart];
-          referenceNode = refNodeFirst(oldRef);
-          // referenceNode = env.nextSibling(refNodeLast(newRefList[newStart-1]));
+        if (!oldRef) {
           newRefList[newStart] = mount(parentNode, referenceNode, parentState, newVnode, ctx);
           newStart++;
           continue;
-        } else {
-          if (oldStartHasKey) {
-            oldStart++;
-            continue;
-          }
-          newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
-          oldRefSet.delete(oldRef);
-          oldStart++;
+        }
+        if (hasKey(newVnode)) {
+          newRefList[newStart] = mount(parentNode, refNodeFirst(oldRef), parentState, newVnode, ctx);
           newStart++;
           continue;
         }
+        if (hasKey(oldRef.vnode)) {
+          oldStart++;
+          continue;
+        }
+        newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
+        oldStart++;
+        oldRefList[oldStart] = null;
+        // newStart++;
+        continue;
+
+
+        // // const oldStartHasKey = hasKey(oldRef.vnode);
+        // if (hasKey(newVnode)) {
+        //   if (oldRefKeyIdx.has(newVnode.key)) {
+        //     const oldRefIdx = oldRefKeyIdx.get(newVnode.key)!;
+        //     // oldRefIdx 与 oldStart 有可能相同，是 key 相同但 type 不同。所以应该先移动后置空。呃，其实此时不需要移动
+        //     oldRef = oldRefList[oldRefIdx];
+        //     // 如果 oldRefSet.has(oldRef) 为 false，说明 key 有重复
+        //     if (oldRefSet.has(oldRef)) {
+        //       if (oldRefIdx !== oldStart) {
+        //         update_idx(oldRef, parentNode, refNodeFirst(oldRefList[oldStart]));
+        //       }
+        //       oldRefList[oldRefIdx] = null!;
+        //       newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
+        //       oldRefSet.delete(oldRef);
+
+        //       if (oldStartHasKey && oldStart <= oldRefIdx) {
+        //         // 这段 if(oldStart <= oldRefIdx) 适用于这种情况
+        //         // xabcdefgy
+        //         // xgbcdefay
+        //         // 否则，适用于
+        //         // xabcdefgy
+        //         // xgabcdefy
+        //         // 在大部分元素顺序未变的时候，这个判断极大地提高了效率，限制 oldStart++，从而充分利用了上面的“按顺序匹配不移动DOM”，即
+        //         // 找到的东西在 oldStart 前面，则假如说元素不缺，相对顺序也没变，则就是 oldStart 比 new 要偏靠后，所以不加 oldStart 让 newStart 赶上来
+        //         oldStart++;
+        //       }
+        //     }
+        //     newStart++;
+        //     continue;
+        //   }
+        //   // oldRef = oldRefList[oldStart];
+        //   referenceNode = refNodeFirst(oldRef);
+        //   // referenceNode = env.nextSibling(refNodeLast(newRefList[newStart-1]));
+        //   newRefList[newStart] = mount(parentNode, referenceNode, parentState, newVnode, ctx);
+        //   newStart++;
+        //   continue;
+        // } else {
+        //   if (oldStartHasKey) {
+        //     oldStart++;
+        //     continue;
+        //   }
+        //   newRefList[newStart] = update(oldRef, parentState, newVnode, ctx);
+        //   oldRefSet.delete(oldRef);
+        //   oldStart++;
+        //   newStart++;
+        //   continue;
+        // }
       }
       // referenceNode = undefined!;
       // while (newStart <= newEnd) {
@@ -376,7 +417,8 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       //   newRefList[newStart] = mount(parentNode, referenceNode, parentState, vnode[newStart], ctx);
       //   newStart++;
       // }
-      oldRefSet.forEach(unmount);
+      // oldRefSet.forEach(unmount);
+      oldRefList.forEach(it => it && unmount(it));
       rl.refList = newRefList as any;
       rl.vnode = vnode;
       return rl;

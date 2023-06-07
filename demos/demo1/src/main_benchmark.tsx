@@ -92,7 +92,7 @@ const buildBussiness = () => {
   const C = ['red', 'yellow', 'blue', 'green', 'pink', 'brown', 'purple', 'brown', 'white', 'black', 'orange'];
   const N = ['table', 'chair', 'house', 'bbq', 'desk', 'car', 'pony', 'cookie', 'sandwich', 'burger', 'pizza', 'mouse', 'keyboard'];
 
-  let nextId = 1;
+  let nextId = 0;
 
   const buildData = (count: number) => {
     const data = new Array<BussItem>(count);
@@ -118,7 +118,10 @@ const buildBussiness = () => {
     }
     state.value = { data, selected };
   };
-  const clear = () => (state.value = { data: [], selected: 0 });
+  const clear = () => {
+    state.value = { data: [], selected: 0 }
+    nextId = 0;
+  };
   const swap_rows = () => {
     let { data, selected } = state.value;
     if (data.length > 998) {
