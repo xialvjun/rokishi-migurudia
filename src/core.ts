@@ -428,6 +428,8 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       // }
       // oldRefSet.forEach(unmount);
       oldRefList.forEach(it => it && unmount(it));
+      // 新增是从前往后，删除就从后往前，可能会减少浏览器的重排重绘（其实理应不会）
+      // oldRefList.reduceRight((_acc, it) => it && unmount(it), null as any);
       rl.refList = newRefList as any;
       rl.vnode = vnode;
       return rl;
@@ -647,6 +649,7 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
     update_idx(ref.renderedRef, parentNode, referenceNode);
   }
 
+  // TODO: unmount 真正的 removeChild 操作可以放外层（即 update）执行，这里不执行，只执行 ref 置空和组件的生命周期事件，速度应该会快点，等 benchmark 出来后再尝试
   function unmount(ref: Ref<N, S>) {
     if (ref.type === RefType.ITEM) {
       env.unmountAttributesBeforeChildren(ref.node, ref.vnode, ref.state);
@@ -698,7 +701,8 @@ function refNodeLast<N>(ref: Ref<N>): N {
 
 // const propertyKeySet = new Set(['number', 'string', 'symbol']);
 // const hasKey = (v: any): v is {key:PropertyKey} => propertyKeySet.has(typeof v?.key)
-const hasKey = (v: any): v is { key: PropertyKey } => v?.key !== undefined;
+// const hasKey = (v: any): v is { key: PropertyKey } => v?.key !== undefined;
+const hasKey = (v: any): v is { key: PropertyKey } => !!v && v.key !== undefined;
 const doSuit = (a: any, b: any) => a?.key === b?.key && a?.type === b?.type;
 
 export type Component<P extends {} = {}, C extends {} = {}> = (

@@ -87,7 +87,7 @@ const SPECIAL_ATTRS: Record<PropertyKey, ReturnType<typeof makeSpecialAttr>> = {
       }
     },
     update(node: any, newValue: any, oldValue: any) {
-      if (newValue === oldValue) return;
+      // if (newValue === oldValue) return;
       SPECIAL_ATTRS.ref.unmount(node, oldValue);
       SPECIAL_ATTRS.ref.mount(node, newValue);
     },

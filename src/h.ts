@@ -31,3 +31,27 @@ export const jsxDEV = jsx;
 export function Fragment(init: { children: any }) {
   return (props: any) => props.children;
 }
+
+const handler = {
+  get(t: any, type: string, _r: any) {
+    if (!t[type]) {
+      t[type] = (props: any, children: any[]) => {
+        return { type };
+      };
+    }
+    return t[type];
+  },
+};
+const html = new Proxy({}, handler);
+const svg = new Proxy({}, handler);
+const mathml = new Proxy({}, handler);
+export const dom = new Proxy({ svg, mathml } as any, {
+  get(t, type, r) {
+    return t[type] || html[type];
+  },
+  // apply: `const h = dom; h(MyCom)`
+  apply(t, self, args) {
+    const [type, props, key] = args;
+    return { type, props, key };
+  },
+});
