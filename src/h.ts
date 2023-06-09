@@ -35,8 +35,8 @@ export function Fragment(init: { children: any }) {
 const handler = {
   get(t: any, type: string, _r: any) {
     if (!t[type]) {
-      t[type] = (props: any, children: any[]) => {
-        return { type };
+      t[type] = (props: any, key: any) => {
+        return { type, props, key };
       };
     }
     return t[type];
@@ -45,7 +45,8 @@ const handler = {
 const html = new Proxy({}, handler);
 const svg = new Proxy({}, handler);
 const mathml = new Proxy({}, handler);
-export const dom = new Proxy({ svg, mathml } as any, {
+// todo: 那 proxy.svg() 而不是 proxy.svg.svg() 这要怎么写
+export const proxy = new Proxy({ svg, mathml } as any, {
   get(t, type, r) {
     return t[type] || html[type];
   },
