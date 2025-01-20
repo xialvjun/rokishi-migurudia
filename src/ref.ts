@@ -1,92 +1,89 @@
-import { queueMacrotask, queueMicrotask, tryCatchLog } from './tools';
+import { Signal } from "signal-polyfill";
+const {
+  State,
+  Computed,
+  isState: signalIsState,
+  isComputed: signalIsComputed,
+  subtle: { Watcher },
+} = Signal;
+
+import { queueMacrotask, queueMicrotask } from "./tools";
 import type { Component } from './core';
 
+const symbol = Symbol("signal");
 
-let REF_LISTENER_CURRENT: VoidFunction;
-
-export type Ref<T> = {
-  value: T;
-  // get(): T;
-  // set<S extends T>(nv: S): { pv: T; cv: S }; // set(undefined)
-}
-
-export function ref<T>(): Ref<T | undefined>
-export function ref<T>(value: T): Ref<T>
-export function ref<T>(value?: T) {
-  // listeners 只增不减，会内存泄漏
-  const listeners = new Set<Function>();
-  let v = value;
+export function ref<T>(s: T) {
+  const sig = new State(s);
   return {
+    [symbol]: sig,
     get value() {
-      REF_LISTENER_CURRENT && listeners.add(REF_LISTENER_CURRENT);
-      return v;
+      return sig.get();
     },
-    set value(nv) {
-      v = nv;
-      listeners.forEach(tryCatchLog);
-      // [...listeners].forEach(tryCatchLog);
+    set value(v: T) {
+      sig.set(v);
     },
-    // get,
-    // set,
   };
-  // function get() {
-  //   REF_LISTENER_CURRENT && listeners.add(REF_LISTENER_CURRENT);
-  //   return v;
-  // }
-  // function set(nv: any) {
-  //   const pv = value;
-  //   v = nv;
-  //   [...listeners].forEach(tryCatchLog);
-  //   return { cv: nv, pv };
-  // }
 }
-
-
-type Computed<T> = ReturnType<typeof computed<T>>
 
 export function computed<T>(fn: () => T) {
-  const listeners = new Set<Function>();
-  let value: T;
-  let dirty = true;
-  const ref_listener = () => {
-    dirty = true;
-    listeners.forEach(tryCatchLog);
-  };
+  const sig = new Computed(fn);
   return {
+    [symbol]: sig,
     get value() {
-      REF_LISTENER_CURRENT && listeners.add(REF_LISTENER_CURRENT);
-      const old_ref_listener = REF_LISTENER_CURRENT;
-      if (dirty) {
-        // const old = REF_LISTENER_CURRENT;
-        REF_LISTENER_CURRENT = ref_listener;
-        value = fn();
-        // REF_LISTENER_CURRENT = old;
-        dirty = false;
-      }
-      REF_LISTENER_CURRENT = old_ref_listener;
-      return value;
+      return sig.get();
     },
-    force() {
-      value = fn();
-      dirty = false;
-      return value;
-    },
+  };
+}
+
+const do_tasks = {
+  pre: queueMicrotask,
+  post: queueMacrotask,
+  sync: (fn: () => void) => fn(),
+};
+const watchers = {
+  pre: create_watcher("pre"),
+  post: create_watcher("post"),
+  sync: create_watcher("sync"),
+};
+function create_watcher(flush: "pre" | "post" | "sync") {
+  let needsEnqueue = true;
+  const do_task = do_tasks[flush];
+  const w = new Watcher(() => {
+    if (needsEnqueue) {
+      needsEnqueue = false;
+      do_task(processPending);
+    }
+  });
+  return w;
+  function processPending() {
+    needsEnqueue = true;
+    for (const s of w.getPending()) {
+      s.get();
+    }
+    w.watch();
   }
 }
 
-// // TODO: 不用 WATCH_OPTS_DEFAULT，直接用 effect
-// export function effect(fn: () => (unknown | (() => unknown))) {
-//   const old_ref_listener = REF_LISTENER_CURRENT;
-//   let cleanup = () => {};
-//   REF_LISTENER_CURRENT = () => {
-//     cleanup();
-//     const may_cleanup = fn();
-//     if (typeof may_cleanup === 'function') {
-//       cleanup = may_cleanup as () => {};
-//     }
-//   }
-// }
-
+const EFFECT_OPTS_DEFAULT = { immediate: false, flush: "pre" } as const;
+export function effect(
+  fn: () => unknown | (() => unknown),
+  opts?: { immediate?: boolean; flush?: "pre" | "post" | "sync" }
+) {
+  opts = { ...EFFECT_OPTS_DEFAULT, ...opts };
+  let cleanup: unknown | (() => unknown);
+  const computed = new Signal.Computed(() => {
+    typeof cleanup === "function" && cleanup();
+    cleanup = fn();
+  });
+  opts.immediate && computed.get();
+  const w = watchers[opts.flush!];
+  w.watch(computed);
+  return () => {
+    w.unwatch(computed);
+    typeof cleanup === "function" && cleanup();
+    cleanup = undefined;
+  };
+}
 
 const WATCH_OPTS_DEFAULT = { immediate: false, flush: 'pre' } as const;
 
@@ -96,40 +93,41 @@ export function watch<T>(w: Computed<T> | Ref<T>, fn: (cv: T, pv: T | undefined)
 export function watch<T>(w: () => T, fn: (cv: T, pv: T | undefined) => any, opt: { immediate: true; flush?: 'pre' | 'post' | 'sync'; }): void;
 export function watch(w: any, fn: Function, opts?: { immediate?: boolean, flush?: 'pre' | 'post' | 'sync'; }) {
   opts = { ...WATCH_OPTS_DEFAULT, ...opts };
-  const ref_listener_do = () => {
-    const pv = cv;
-    cv = w.value;
-    fn(cv, pv);
-  };
-  let ref_listener = ref_listener_do;
-  if (opts.flush === 'pre') {
-    ref_listener = () => {
-      queueMicrotask(ref_listener_do);
-    };
-  }
-  if (opts.flush === 'post') {
-    ref_listener = () => {
-      queueMacrotask(ref_listener_do);
-    };
-  }
   w = typeof w === 'function' ? computed(w) : w;
-  REF_LISTENER_CURRENT = ref_listener;
-  let cv = w.value;
-  if (opts.immediate) {
-    fn(cv, undefined);
-  }
+  let pv: any = undefined;
+  effect(() => {
+    const nv = w.value;
+    fn(nv, pv);
+    pv = nv;
+  }, opts);
+}
+
+export type Sig<T> = Ref<T> | Computed<T>;
+export function isSig(sig: any): sig is Sig<unknown> {
+  return isRef(sig) || isComputed(sig);
+}
+
+export type Ref<T> = ReturnType<typeof ref<T>>;
+export function isRef(ref: any): ref is Ref<unknown> {
+  return !!ref && signalIsState(ref[symbol]);
+}
+
+export type Computed<T> = ReturnType<typeof computed<T>>;
+export function isComputed(cpu: any): cpu is Computed<unknown> {
+  return !!cpu && signalIsComputed(cpu[symbol]);
 }
 
 // TODO 这种会内存泄漏，组件 unmount 没通知去掉 ref_listener
 export function defineComponent<P extends {} = any, C extends {} = any>(type: Component<P, C>) {
   const newType = (initProps: any, ins: any) => {
     const render = type(initProps, ins);
-    const newRnder = (props: any) => {
-      // const old = REF_LISTENER_CURRENT;
-      REF_LISTENER_CURRENT = ins.update;
-      return render(props);
-    }
-    return newRnder;
+    const vnode = computed(() => render(ins.props));
+    ins.on('unmount', effect(() => {
+      vnode.value;
+      ins.update();
+    }));
+    return () => vnode.value;
+    // return render;
   };
   return newType as typeof type;
 }
