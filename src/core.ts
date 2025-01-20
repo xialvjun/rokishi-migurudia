@@ -28,7 +28,7 @@ type EventMap = {
 };
 
 function createInstance<P extends {} = {}, C extends {} = {}>(init: P, ctx: C | null, doUpdate: () => void) {
-  const hooks: Record<keyof EventMap, Set<Function>> = {} as any;
+  const hooks: Record<keyof EventMap, Set<(...args: any[]) => any>> = {} as any;
   const on = <K extends keyof EventMap>(type: K, fn: (event: EventMap[K]) => any) => {
     const set = hooks[type] ??= new Set();
     set.add(fn);
@@ -142,7 +142,7 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
           if (!hooks_error?.size) {
             throw error;
           }
-          hooks_error.forEach(tryCatchLog);
+          hooks_error.forEach(fn => tryCatchLog(() => fn(error)));
         }
         updated && hooks.updated?.forEach(tryCatchLog);
       });
