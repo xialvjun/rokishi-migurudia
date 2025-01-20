@@ -1,5 +1,5 @@
 import type { Env } from '../core';
-import { isEmpty, isLeaf, isElement } from '../core';
+import { isEmpty, isLeaf, isElement, createMagaleta } from '../core';
 
 type DomNode = Node;
 type DomElement = Element;
@@ -114,6 +114,17 @@ const xmlns: any = {
 };
 
 export const env: Env<N, S> = {
+  // createApp(vnode): unknown {
+  //   const env_ = createMagaleta(env);
+  //   const mount = (parentNode: N, parentState: S='') => env_.mount(parentNode, null, parentState, vnode, null);
+  //   return { mount };
+  // },
+  initState() {
+    return ''
+  },
+  isEnvNode: ((vnode: unknown) => {
+    return vnode instanceof Node;
+  }) as Env['isEnvNode'],
   createNode(vnode, parentState) {
     const ns = parentState || '';
     if (isEmpty(vnode)) {
@@ -227,3 +238,8 @@ export const env: Env<N, S> = {
     return node.nextSibling;
   },
 };
+
+// export function Portal(init: { parentNode: string | DomElement, children: any }, ins: any) {
+
+//   return () => null;
+// }

@@ -4,9 +4,10 @@ type EmptyVnode = false | null | undefined | [];
 type LeafVnode = string | number;
 type ElementVnode = { type: string; props: { children?: Vnode }; key?: any };
 type EnvVnode = EmptyVnode | LeafVnode | ElementVnode;
+type EnvNode = never;
 type NonEmptyArrayVnode = [Vnode, ...Vnode[]];
-type ComponentVnode = { type: (...args: any[]) => (...args: any[]) => Vnode; props: {}; key?: any };
-export type Vnode = EnvVnode | NonEmptyArrayVnode | ComponentVnode;
+type ComponentVnode = { type: (init: {}, ins: unknown) => (props: {}) => Vnode; props: {}; key?: any };
+export type Vnode = EnvVnode | EnvNode | NonEmptyArrayVnode | ComponentVnode;
 
 export const isEmpty = (c: any): c is EmptyVnode => c === false || c === null || c === undefined || (Array.isArray(c) && c.length === 0);
 export const isLeaf = (c: any): c is LeafVnode => typeof c === 'string' || typeof c === 'number';
@@ -23,15 +24,15 @@ type EventMap = {
   updated: never;
   unmount: never;
   unmounted: never;
-  // error: Error;
+  error: Error;
 };
 
 function createInstance<P extends {} = {}, C extends {} = {}>(init: P, ctx: C | null, doUpdate: () => void) {
   const hooks: Record<keyof EventMap, Set<Function>> = {} as any;
   const on = <K extends keyof EventMap>(type: K, fn: (event: EventMap[K]) => any) => {
-    hooks[type] ??= new Set();
-    hooks[type].add(fn);
-    return () => hooks[type].delete(fn);
+    const set = hooks[type] ??= new Set();
+    set.add(fn);
+    return () => set.delete(fn);
   };
 
   let dirty = false;
@@ -54,7 +55,11 @@ function createInstance<P extends {} = {}, C extends {} = {}>(init: P, ctx: C | 
 }
 
 export type Env<N = any, S = any> = {
-  createNode(vnode: EnvVnode, parentState: S | null): { node: N; state: S };
+  // createApp(vnode: Vnode): unknown;
+  initState(): S;
+  isEnvNode(vnode: unknown): vnode is EnvNode;
+  // 
+  createNode(vnode: EnvVnode, parentState: S): { node: N; state: S };
   mountAttributesBeforeChildren(node: N, vnode: EnvVnode, state: S): void;
   mountAttributesAfterChildren(node: N, vnode: EnvVnode, state: S): void;
   updateAttributesBeforeChildren(node: N, newVnode: EnvVnode, oldVnode: EnvVnode, state: S): void;
@@ -99,7 +104,7 @@ type Ref<N = any, S = any> = ItemRef<N, S> | ListRef<N, S> | MagaletaRef<N, S>;
 // Magaleta is the adoptive older sister of Senia.
 export function createMagaleta<N, S>(env: Env<N, S>) {
   return { mount, update, unmount };
-  function mount(parentNode: N, referenceNode: N | null, parentState: S | null, vnode: Vnode, ctx: any): Ref<N, S> {
+  function mount(parentNode: N, referenceNode: N | null, parentState: S, vnode: Vnode, ctx: any): Ref<N, S> {
     if (isEmpty(vnode) || isLeaf(vnode)) {
       const { node, state } = env.createNode(vnode, parentState);
       env.insertBefore(parentNode, node, referenceNode);
@@ -127,15 +132,26 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       const { type, props } = vnode;
       const instance = createInstance(props, ctx, () => {
         const vnode = render(instance.props);
-        instance[symbol].update?.forEach(tryCatchLog);
-        ref.renderedRef = update(ref.renderedRef, parentState, vnode, instance.ctx);
-        instance[symbol].updated?.forEach(tryCatchLog);
+        hooks.update?.forEach(tryCatchLog);
+        let updated = true;
+        try {
+          ref.renderedRef = update(ref.renderedRef, parentState, vnode, instance.ctx);
+        } catch (error) {
+          updated = false;
+          const hooks_error = hooks.error;
+          if (!hooks_error?.size) {
+            throw error;
+          }
+          hooks_error.forEach(tryCatchLog);
+        }
+        updated && hooks.updated?.forEach(tryCatchLog);
       });
+      const hooks = instance[symbol];
       const render = type(props, instance);
       const renderedVnode = render(props);
-      instance[symbol].mount?.forEach(tryCatchLog);
+      hooks.mount?.forEach(tryCatchLog);
       const renderedRef = mount(parentNode, referenceNode, parentState, renderedVnode, instance.ctx);
-      instance[symbol].mounted?.forEach(tryCatchLog);
+      hooks.mounted?.forEach(tryCatchLog);
       const ref = {
         type: RefType.MAGALETA as const,
         vnode,
@@ -145,10 +161,14 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       };
       return ref;
     }
+    if (env.isEnvNode(vnode)) {
+      env.insertBefore(parentNode, vnode, referenceNode);
+      return { type: RefType.ITEM, vnode, node: vnode, childrenRef: null, state: parentState };
+    }
     throw new Error('mount: Invalid Vnode!');
   }
 
-  function update(ref: Ref<N, S>, parentState: S | null, vnode: Vnode, ctx: any): Ref<N, S> {
+  function update(ref: Ref<N, S>, parentState: S, vnode: Vnode, ctx: any): Ref<N, S> {
     if (ref.vnode === vnode) {
       return ref;
     }
@@ -650,20 +670,21 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
   }
 
   // TODO: unmount 真正的 removeChild 操作可以放外层（即 update）执行，这里不执行，只执行 ref 置空和组件的生命周期事件，速度应该会快点，等 benchmark 出来后再尝试
-  function unmount(ref: Ref<N, S>) {
+  // update 里的 unmount 全都 touch_dom, 而 unmount 里的 RefType.ITEM 递归 unmount 就不 touch_dom 了
+  function unmount(ref: Ref<N, S>, touch_dom=true) {
     if (ref.type === RefType.ITEM) {
       env.unmountAttributesBeforeChildren(ref.node, ref.vnode, ref.state);
-      ref.childrenRef && unmount(ref.childrenRef);
+      ref.childrenRef && unmount(ref.childrenRef, false);
       env.unmountAttributesAfterChildren(ref.node, ref.vnode, ref.state);
-      env.removeChild(env.parentNode(ref.node)!, ref.node);
+      touch_dom && env.removeChild(env.parentNode(ref.node)!, ref.node);
     } else if (ref.type === RefType.LIST) {
       ref.refList
         .slice()
         .reverse()
-        .forEach(it => unmount(it));
+        .forEach(it => unmount(it, touch_dom));
     } else {
       ref.instance[symbol].unmount?.forEach(tryCatchLog);
-      unmount(ref.renderedRef);
+      unmount(ref.renderedRef, touch_dom);
       ref.instance[symbol].unmounted?.forEach(tryCatchLog);
     }
   }

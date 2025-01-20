@@ -13,6 +13,7 @@ export type Ref<T> = {
 export function ref<T>(): Ref<T | undefined>
 export function ref<T>(value: T): Ref<T>
 export function ref<T>(value?: T) {
+  // listeners 只增不减，会内存泄漏
   const listeners = new Set<Function>();
   let v = value;
   return {
@@ -22,7 +23,8 @@ export function ref<T>(value?: T) {
     },
     set value(nv) {
       v = nv;
-      [...listeners].forEach(tryCatchLog);
+      listeners.forEach(tryCatchLog);
+      // [...listeners].forEach(tryCatchLog);
     },
     // get,
     // set,
@@ -43,13 +45,17 @@ export function ref<T>(value?: T) {
 type Computed<T> = ReturnType<typeof computed<T>>
 
 export function computed<T>(fn: () => T) {
+  const listeners = new Set<Function>();
   let value: T;
   let dirty = true;
   const ref_listener = () => {
     dirty = true;
+    listeners.forEach(tryCatchLog);
   };
   return {
     get value() {
+      REF_LISTENER_CURRENT && listeners.add(REF_LISTENER_CURRENT);
+      const old_ref_listener = REF_LISTENER_CURRENT;
       if (dirty) {
         // const old = REF_LISTENER_CURRENT;
         REF_LISTENER_CURRENT = ref_listener;
@@ -57,6 +63,7 @@ export function computed<T>(fn: () => T) {
         // REF_LISTENER_CURRENT = old;
         dirty = false;
       }
+      REF_LISTENER_CURRENT = old_ref_listener;
       return value;
     },
     force() {
@@ -67,14 +74,28 @@ export function computed<T>(fn: () => T) {
   }
 }
 
+// // TODO: 不用 WATCH_OPTS_DEFAULT，直接用 effect
+// export function effect(fn: () => (unknown | (() => unknown))) {
+//   const old_ref_listener = REF_LISTENER_CURRENT;
+//   let cleanup = () => {};
+//   REF_LISTENER_CURRENT = () => {
+//     cleanup();
+//     const may_cleanup = fn();
+//     if (typeof may_cleanup === 'function') {
+//       cleanup = may_cleanup as () => {};
+//     }
+//   }
+// }
 
-const WATCH_OPTS_DEFAULT = { immediate: false, flush: 'post' } as const;
+
+const WATCH_OPTS_DEFAULT = { immediate: false, flush: 'pre' } as const;
 
 export function watch<T>(w: Computed<T> | Ref<T>, fn: (cv: T, pv: T) => any): void;
 export function watch<T>(w: Computed<T> | Ref<T>, fn: (cv: T, pv: T) => any, opt: { immediate?: false; flush?: 'pre' | 'post' | 'sync'; }): void;
 export function watch<T>(w: Computed<T> | Ref<T>, fn: (cv: T, pv: T | undefined) => any, opt: { immediate: true; flush?: 'pre' | 'post' | 'sync'; }): void;
 export function watch<T>(w: () => T, fn: (cv: T, pv: T | undefined) => any, opt: { immediate: true; flush?: 'pre' | 'post' | 'sync'; }): void;
-export function watch(w: any, fn: Function, opts: { immediate?: boolean, flush?: 'pre' | 'post' | 'sync'; } = WATCH_OPTS_DEFAULT) {
+export function watch(w: any, fn: Function, opts?: { immediate?: boolean, flush?: 'pre' | 'post' | 'sync'; }) {
+  opts = { ...WATCH_OPTS_DEFAULT, ...opts };
   const ref_listener_do = () => {
     const pv = cv;
     cv = w.value;
@@ -99,7 +120,7 @@ export function watch(w: any, fn: Function, opts: { immediate?: boolean, flush?:
   }
 }
 
-
+// TODO 这种会内存泄漏，组件 unmount 没通知去掉 ref_listener
 export function defineComponent<P extends {} = any, C extends {} = any>(type: Component<P, C>) {
   const newType = (initProps: any, ins: any) => {
     const render = type(initProps, ins);
