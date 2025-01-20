@@ -1,12 +1,3 @@
-// import { Signal } from "signal-polyfill";
-// const {
-//   State,
-//   Computed,
-//   isState: signalIsState,
-//   isComputed: signalIsComputed,
-//   subtle: { Watcher },
-// } = Signal;
-
 import { queueMacrotask, queueMicrotask, tryCatchLog } from "./tools";
 
 // Effect 是实实在在在 State/Computed 里面的，但 Computed 不该在 State/Computed 里
@@ -18,6 +9,9 @@ import { queueMacrotask, queueMicrotask, tryCatchLog } from "./tools";
 // 要停止 effect 需要手动调用 revoker，则会把 effect 从 state 里去除，因为不会有内存泄漏
 // 不对，还有问题：如果 effect 依赖的完全是 computed 怎么办。此时 state 变化要通知谁
 // 所以还有 computed 的 get 是要递归找到 state 并加到 effect 里
+
+// 还有，state/computed 都还可以减去重复值，哪怕 state 没重复，computed 也可能重复。。。所以 computed 也有个 version
+// 而且只能用 computed 递归 computed，不能用 computed 复制依赖的 computed 的 state
 
 function link_state_effect(state: State, effect: Effect) {
   state.effects.add(effect);
@@ -49,7 +43,7 @@ class Computed<T = any> {
   fn: () => T;
   cache: T = undefined!;
   states = new Map<State, number>();
-  computeds = new Set<Computed>();
+  // computeds = new Set<Computed>();
   constructor(fn: () => T) {
     this.fn = fn;
   }
@@ -59,30 +53,26 @@ class Computed<T = any> {
         return true;
       }
     }
-    for (const computed of this.computeds) {
-      if (computed.isDirty()) {
-        return true;
-      }
-    }
+    // for (const computed of this.computeds) {
+    //   if (computed.isDirty()) {
+    //     return true;
+    //   }
+    // }
     return false;
   }
   track() {
-    // track 做 effect 读取时，把 state 以及自己依赖的 computed 的 state 都加到 effect 上
+    // track 前要保证自己 isDirty 为 false
     if (CURRENT_COMPUTED) {
-      // link_computed_computed
-      CURRENT_COMPUTED.computeds.add(this);
-      // 不用下面的设置 state version 避免代码结构上没有避免版本冲突，虽然代码逻辑上不会
-      // 而是 下面 CURRENT_EFFECT && this.computeds.forEach(it => it.track());
-      // for (const [state, version] of this.states) {
-      //   CURRENT_COMPUTED.states.set(state, version);
-      // }
+      // 这种把依赖的 state 复制一遍，代码逻辑比 computed 递归依赖 computed 要简单得多，性能应该也更好
+      // 如果是 递归依赖computed 则 track CURRENT_COMPUTED 倒是简单了，但 isDirty 要变，track CURRENT_EFFECT 要变
+      for (const [state, version] of this.states) {
+        CURRENT_COMPUTED.states.set(state, version);
+      }
     }
     if (CURRENT_EFFECT) {
-      // link_computed_effect
-      this.states.forEach((v, state) =>
-        link_state_effect(state, CURRENT_EFFECT)
-      );
-      this.computeds.forEach((it) => it.track());
+      for (const [state] of this.states) {
+        link_state_effect(state, CURRENT_EFFECT);
+      }
     }
     return this.cache;
   }
@@ -92,14 +82,18 @@ class Computed<T = any> {
     }
     const old = CURRENT_COMPUTED;
     CURRENT_COMPUTED = this;
-    this.states.clear();
-    this.computeds.clear();
-    const [cache, _, has_error] = tryCatchLog(this.fn);
-    if (!has_error) {
-      this.cache = cache!;
+    const old_states = this.states;
+    this.states = new Map();
+    try {
+      this.cache = this.fn();
+    } catch (error) {
+      this.states = old_states;
+      // 这里 throw 掉，可以保证 this.track() 时一定 !isDirty()
+      throw error;
+    } finally {
+      CURRENT_COMPUTED = old;
+      return this.track();
     }
-    CURRENT_COMPUTED = old;
-    return this.track();
   }
 }
 
@@ -141,187 +135,65 @@ class Effect {
   }
 }
 
-// let current_listener = null;
-// let current_dependant = null;
-// class State {
-//   #s;
-//   #deps = new Set();
-//   #addDep(dep) {
-//     this.#deps.add(dep);
-//   }
-//   constructor(s: any) {
-//     this.s = s;
-//   }
-//   get() {
-//     current_listener && this.#listeners.push()
-//   }
-//   set() {
+const symbol = Symbol("signal");
 
-//   }
+export function ref<T>(s: T) {
+  const sig = new State(s);
+  return {
+    [symbol]: sig,
+    get value() {
+      return sig.get();
+    },
+    set value(v: T) {
+      sig.set(v);
+    },
+  };
+}
+
+export function computed<T>(fn: () => T) {
+  const sig = new Computed(fn);
+  return {
+    [symbol]: sig,
+    get value() {
+      return sig.get();
+    },
+  };
+}
+
+export function effect(
+  fn: () => unknown | (() => unknown),
+  flush: EffectFlush = "pre"
+) {
+  const sig = new Effect(fn, flush);
+  const revoke = () => sig.revoke();
+  revoke[symbol] = sig;
+  return revoke;
+}
+
+export type Sig<T> = SigRef<T> | SigComputed<T>;
+export function isSig(sig: any): sig is Sig<unknown> {
+  return isRef(sig) || isComputed(sig);
+}
+
+export type SigRef<T> = ReturnType<typeof ref<T>>;
+export function isRef(ref: any): ref is SigRef<unknown> {
+  return !!ref && ref[symbol] instanceof State;
+}
+
+export type SigComputed<T> = ReturnType<typeof computed<T>>;
+export function isComputed(cpu: any): cpu is Computed<unknown> {
+  return !!cpu && cpu[symbol] instanceof Computed;
+}
+
+// export type SigEffect = ReturnType<typeof effect>;
+// export function isEffect(eff: any): eff is Effect {
+//   return !!eff && eff[symbol] instanceof Effect;
 // }
 
-// class State<T=any> {
-//   #s: T;
-//   #deps = new Set();
-//   constructor(s: T) {
-//     this.#s = s;
-//   }
-//   get() {
-//     CURRENT_COMPUTED?.addDep(this);
-//     return this.#s;
-//   }
-//   set(s: T) {
-//     this.#s = s;
-
-//   }
-// }
-
-// class Computed<T=any> {
-//   #fn: () => T
-//   #cache: T = undefined!;
-//   #dirty = true;
-//   #deps = new Set();
-//   constructor(fn: () => T) {
-//     this.#fn = fn;
-//   }
-//   get() {
-//     if (this.#dirty) {
-//       const old_current_computed = CURRENT_COMPUTED;
-//       CURRENT_COMPUTED = this;
-//       this.#cache = this.#fn();
-//       CURRENT_COMPUTED = old_current_computed;
-//       this.#dirty = false;
-//     }
-//     return this.#cache;
-//   }
-//   addDep(s: State | Computed) {
-//     this.#deps.add(s);
-//   }
-// }
-
-// let CURRENT_DEPS: Set<any> = null!;
-
-// // let CURRENT_COMPUTED: any;
-// function ref<T>(s: T) {
-//   const listeners = new Set<Function>();
-//   return {
-//     get value() {
-
-//       return s;
-//     },
-//     set value(nv) {
-//       s = nv;
-//       // ws.
-//     }
-//   }
-// }
-
-// function computed<T>(fn: () => T) {
-//   return {
-//     get value() {
-
-//     }
-//   }
-// }
-
-// function effect(fn: any, { immediate, flush }: any) {
-//   const deps = new Set();
-//   if (immediate) {
-//     let old_current_deps = CURRENT_DEPS;
-//     CURRENT_DEPS = deps;
-//     const cleanup = fn();
-//     CURRENT_DEPS = old_current_deps;
-//   }
-//   return () => deps.forEach(it => it.listeners.delete(this))
-//   function process() {
-
-//   }
-// }
-
-// // export function ref<T>(s: T) {
-// //   const sig = new State(s);
-// //   return {
-// //     [symbol]: sig,
-// //     get value() {
-// //       return sig.get();
-// //     },
-// //     set value(v: T) {
-// //       sig.set(v);
-// //     },
-// //   };
-// // }
-
-// // export function computed<T>(fn: () => T) {
-// //   const sig = new Computed(fn);
-// //   return {
-// //     [symbol]: sig,
-// //     get value() {
-// //       return sig.get();
-// //     },
-// //   };
-// // }
-
-// // const do_tasks = {
-// //   pre: queueMicrotask,
-// //   post: queueMacrotask,
-// //   sync: (fn: () => void) => fn(),
-// // };
-// // const watchers = {
-// //   pre: create_watcher("pre"),
-// //   post: create_watcher("post"),
-// //   sync: create_watcher("sync"),
-// // };
-// // function create_watcher(flush: "pre" | "post" | "sync") {
-// //   let needsEnqueue = true;
-// //   const do_task = do_tasks[flush];
-// //   const w = new Watcher(() => {
-// //     if (needsEnqueue) {
-// //       needsEnqueue = false;
-// //       do_task(processPending);
-// //     }
-// //   });
-// //   return w;
-// //   function processPending() {
-// //     needsEnqueue = true;
-// //     for (const s of w.getPending()) {
-// //       s.get();
-// //     }
-// //     w.watch();
-// //   }
-// // }
-
-// // const EFFECT_OPTS_DEFAULT = { immediate: false, flush: "pre" } as const;
-// // export function effect(
-// //   fn: () => unknown | (() => unknown),
-// //   opts?: { immediate?: boolean; flush?: "pre" | "post" | "sync" }
-// // ) {
-// //   opts = { ...EFFECT_OPTS_DEFAULT, ...opts };
-// //   let cleanup: unknown | (() => unknown);
-// //   const computed = new Signal.Computed(() => {
-// //     typeof cleanup === "function" && cleanup();
-// //     cleanup = fn();
-// //   });
-// //   opts.immediate && computed.get();
-// //   const w = watchers[opts.flush!];
-// //   w.watch(computed);
-// //   return () => {
-// //     w.unwatch(computed);
-// //     typeof cleanup === "function" && cleanup();
-// //     cleanup = undefined;
-// //   };
-// // }
-
-// // export type Sig<T> = Ref<T> | Computed<T>;
-// // export function isSig(sig: any): sig is Sig<unknown> {
-// //   return isRef(sig) || isComputed(sig);
-// // }
-
-// // export type Ref<T> = ReturnType<typeof ref<T>>;
-// // export function isRef(ref: any): ref is Ref<unknown> {
-// //   return !!ref && signalIsState(ref[symbol]);
-// // }
-
-// // export type Computed<T> = ReturnType<typeof computed<T>>;
-// // export function isComputed(cpu: any): cpu is Computed<unknown> {
-// //   return !!cpu && signalIsComputed(cpu[symbol]);
-// // }
+function watch(w: any, fn: any, opts: any) {
+  let run = opts.immediate
+  effect(() => {
+    w.value;
+    run = true;
+  }, 'sync');
+}
