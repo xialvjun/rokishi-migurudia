@@ -99,8 +99,8 @@ const SPECIAL_ATTRS: Record<PropertyKey, ReturnType<typeof makeSpecialAttr>> = {
       }
     },
   },
-  key: makeSpecialAttr('key', () => { }),
-  children: makeSpecialAttr('children', () => { }),
+  key: makeSpecialAttr('key', () => {}),
+  children: makeSpecialAttr('children', () => {}),
   selected: makeSpecialAttr('selected'),
   checked: makeSpecialAttr('checked'),
   value: makeSpecialAttr('value'),
@@ -120,7 +120,7 @@ export const env: Env<N, S> = {
   //   return { mount };
   // },
   initState() {
-    return ''
+    return '';
   },
   isEnvNode: ((vnode: unknown) => {
     return vnode instanceof Node;
@@ -224,7 +224,7 @@ export const env: Env<N, S> = {
     const ref = (vnode as any)?.props?.ref;
     ref && SPECIAL_ATTRS.ref.unmount(node, ref);
   },
-  unmountAttributesAfterChildren(node, vnode, ns) { },
+  unmountAttributesAfterChildren(node, vnode, ns) {},
   insertBefore(parentNode, newNode, referenceNode) {
     parentNode.insertBefore(newNode, referenceNode);
   },
@@ -239,7 +239,22 @@ export const env: Env<N, S> = {
   },
 };
 
-// export function Portal(init: { parentNode: string | DomElement, children: any }, ins: any) {
-
-//   return () => null;
-// }
+const env_dom = createMagaleta(env);
+export function Portal(init: { parentNode: string | DomElement; children: any }, ins: any) {
+  let old_parent_node = null;
+  let mounted_reference: any = null;
+  const parentState = env.initState();
+  ins.on('unmount', () => {
+    mounted_reference && env_dom.unmount(mounted_reference, true);
+  });
+  return (props: typeof init) => {
+    const parentNode = typeof init.parentNode === 'string' ? document.querySelector(init.parentNode)! : init.parentNode;
+    if (parentNode !== old_parent_node) {
+      mounted_reference && env_dom.unmount(mounted_reference, true);
+      mounted_reference = env_dom.mount(parentNode, null, parentState, props.children, ins.ctx);
+    } else {
+      mounted_reference = env_dom.update(mounted_reference, parentState, props.children, ins.ctx);
+    }
+    return null;
+  };
+}

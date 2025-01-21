@@ -256,8 +256,9 @@ export function defineComponent<P extends {} = any, C extends {} = any>(type: Co
         ins.update();
       })
     );
-    return () => vnode.value;
-    // return render;
+    // return () => vnode.value;
+    // 可能有用户改变对象内部属性，此时 computed 仍会返回旧 cache，除非用 computed.force ，但那跟原函数就没区别了
+    return render;
   };
   return newType as typeof type;
 }

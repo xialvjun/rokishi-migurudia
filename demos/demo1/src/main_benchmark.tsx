@@ -9,7 +9,8 @@ const Row = defineComponent<{ item: BussItem; selected: boolean; actions: BussAc
     const { selected, item } = props;
     return (
       <tr className={selected ? 'danger' : ''}>
-        <td className="col-md-1">{item.id}</td>
+        {/* 用 memo 可以减少 diff , 或者可以把它做成 computed 放 render 外面，但那需要响应式状态，与 memo 逻辑不一样 */}
+        {memo('col-md-1', <td className="col-md-1">{item.id}</td>, item.id)}
         <td className="col-md-4">
           <a onClick={onselect}>{item.label}</a>
         </td>
