@@ -1,4 +1,5 @@
 import { queueMacrotask, queueMicrotask, tryCatchLog } from './tools';
+import type { Component } from './core';
 
 namespace signal {
   // Effect 是实实在在在 State/Computed 里面的，但 Computed 不该在 State/Computed 里
@@ -100,7 +101,6 @@ namespace signal {
         }
         this.computeds.forEach((v, it) => it.track_eff());
       }
-
     }
     get() {
       if (!this.isDirty()) {
@@ -290,33 +290,30 @@ export function effect(fn: () => unknown | (() => unknown), flush: EffectFlush =
   return revoke;
 }
 
+type WatchRef<T> = Ref<T> | (() => T);
+type WatchFn<T, Imm extends boolean> = (cv: T, pv: Imm extends true ? T | undefined : T, inv: (fn: () => any) => void) => () => void;
+
 const WATCH_OPTS_DEFAULT = { immediate: false, flush: 'pre' } as const;
 
-export function watch<T>(w: Computed<T> | Ref<T>, fn: (cv: T, pv: T) => any): void;
-export function watch<T>(
-  w: Computed<T> | Ref<T>,
-  fn: (cv: T, pv: T) => any,
-  opt: { immediate?: false; flush?: 'pre' | 'post' | 'sync' }
-): void;
-export function watch<T>(
-  w: Computed<T> | Ref<T>,
-  fn: (cv: T, pv: T | undefined) => any,
-  opt: { immediate: true; flush?: 'pre' | 'post' | 'sync' }
-): void;
-export function watch<T>(
-  w: () => T,
-  fn: (cv: T, pv: T | undefined) => any,
-  opt: { immediate: true; flush?: 'pre' | 'post' | 'sync' }
-): void;
-export function watch(w: any, fn: Function, opts?: { immediate?: boolean; flush?: 'pre' | 'post' | 'sync' }) {
-  opts = { ...WATCH_OPTS_DEFAULT, ...opts };
+export function watch<T>(w: WatchRef<T>, fn: WatchFn<T, false>): () => any;
+export function watch<T>(w: WatchRef<T>, fn: WatchFn<T, false>, opt: { immediate?: false; flush?: EffectFlush }): () => any;
+export function watch<T>(w: WatchRef<T>, fn: WatchFn<T, true>, opt: { immediate: true; flush?: EffectFlush }): () => any;
+export function watch<T>(w: WatchRef<T>, fn: WatchFn<T, true>, opt: { immediate: true; flush?: EffectFlush }): () => any;
+export function watch(w: any, fn: any, opts?: { immediate?: boolean; flush?: EffectFlush }) {
+  let { immediate, flush } = { ...WATCH_OPTS_DEFAULT, ...opts };
   w = typeof w === 'function' ? computed(w) : w;
   let pv: any = undefined;
-  effect(() => {
+  let invs: any[] = [];
+  return effect(() => {
+    invs.forEach(fn => fn());
+    invs = [];
     const nv = w.value;
-    fn(nv, pv);
+    if (immediate) {
+      fn(nv, pv, (fn: any) => invs.push(fn));
+    }
+    immediate = true;
     pv = nv;
-  }, opts.flush);
+  }, flush);
 }
 
 export type Ref<T = any> = ReturnType<typeof ref<T>> | Computed<T>;
@@ -331,22 +328,24 @@ export function isComputed(ref: any): ref is Computed<unknown> {
   return !!ref && ref[symbol] instanceof SignalComputed;
 }
 
-// export type Sig<T> = SigRef<T> | SigComputed<T>;
-// export function isSig(sig: any): sig is Sig<unknown> {
-//   return isRef(sig) || isComputed(sig);
-// }
+// TODO 这种会内存泄漏，组件 unmount 没通知去掉 ref_listener
+export function defineComponent<P extends {} = any, C extends {} = any>(type: Component<P, C>) {
+  const newType = (initProps: any, ins: any) => {
+    const render = type(initProps, ins);
+    const vnode = computed(() => render(ins.props));
+    ins.on(
+      'unmount',
+      effect(() => {
+        vnode.value;
+        ins.update();
+      })
+    );
+    return () => vnode.value;
+    // return render;
+  };
+  return newType as typeof type;
+}
 
-// export type SigRef<T> = ReturnType<typeof ref<T>>;
-// export function isRef(ref: any): ref is SigRef<unknown> {
-//   return !!ref && ref[symbol] instanceof State;
-// }
-
-// export type SigComputed<T> = ReturnType<typeof computed<T>>;
-// export function isComputed(cpu: any): cpu is Computed<unknown> {
-//   return !!cpu && cpu[symbol] instanceof Computed;
-// }
-
-// // export type SigEffect = ReturnType<typeof effect>;
-// // export function isEffect(eff: any): eff is Effect {
-// //   return !!eff && eff[symbol] instanceof Effect;
-// // }
+export const Setup = defineComponent<{ key: PropertyKey; children: Component<{}, any> }>((init, ins) => {
+  return init.children({}, ins);
+});
