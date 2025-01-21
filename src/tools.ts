@@ -9,12 +9,15 @@ export const queueMacrotask =
         setTimeout(cb);
       };
 
+const gt = globalThis || window;
 export const queueMicrotask =
-  typeof window?.queueMicrotask !== 'undefined'
-    ? window.queueMicrotask
+  typeof gt?.queueMicrotask !== 'undefined'
+    ? gt.queueMicrotask
     : typeof Promise !== 'undefined'
     ? (cb: VoidFunction) => Promise.resolve().then(cb)
-    : queueMacrotask;
+    : () => {
+        throw new Error('queueMicrotask is not supported');
+      };
 
 // export const tryCatchLog = (fn: Function, msg='') => {
 //   try {
