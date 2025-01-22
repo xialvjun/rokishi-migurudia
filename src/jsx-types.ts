@@ -8,11 +8,11 @@ export namespace JSX {
   // export interface IntrinsicElements {
   //   [tag: string]: any;
   // }
-  // type SpecialProps = {
-  //   class?: any;
-  //   style?: any;
-  //   [k: string]: any;
-  // };
+  type SpecialProps = {
+    class?: any;
+    style?: any;
+    [k: string]: any;
+  };
   // export type IntrinsicElements = {
   //   [k in keyof HTMLElementTagNameMap]: Partial<Omit<HTMLElementTagNameMap[k], 'className' | 'style' | 'children'>> & SpecialProps;
   // } & {
@@ -28,9 +28,12 @@ export namespace JSX {
   // } & {
   //   [k: string]: any;
   // };
+  // export type IntrinsicElements = {
+  //   [tag: string]: any;
+  // };
   export type IntrinsicElements = {
-    [tag: string]: any;
-  };
+    [k in keyof HTMLElementTagNameMap]: Partial<Omit<HTMLElementTagNameMap[k], 'className' | 'style' | 'children'>> & SpecialProps;
+  } 
 }
 
 // type html = HTMLElementTagNameMap;

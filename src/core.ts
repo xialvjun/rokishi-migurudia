@@ -24,6 +24,18 @@ type EventMap = {
   updated: never;
   unmount: never;
   unmounted: never;
+  // on('error', fn) 没有太大意义
+  // 1:只能监测同步代码，父组件 mount 时，监测子组件 mount ，父组件 update 时监测子组件 update
+  // 子组件自己的 update 出的错，父组件是检测不到的
+  // 2;他所有出错都已经产生了 dom 修改副作用，没法回退，其实之后的状态大概率是有问题的
+  // -- 它只能同步监测自己的 render 函数报错，还只能是 update 的时候，不能是 mount 的时候，因为如果 mount 时出错了，连回退都不知道如何回退
+  // -- 如果还要监测子组件的报错，则要写的地方比较多。
+  // -- 比较多本身没问题，有问题的是，这必须得是同步的，不支持 fiber。所以就不用 onerror 做 ErrorBoundary , 用 ctx 做
+  // 用户写的代码只有 setup 和 render，如果框架没问题，那只要这两个函数不 throw，那就没问题。而这两个函数分别有在 mount-setup/render 和 update-render 时运行
+  // mount 时如果出错，最初的 renderedRef 都拿不到，可部分 dom 副作用已经产生了，要回退都回退不了
+  // update 也是一样，虽然有 renderedRef ，但在下一次 update 或 unmount 时多少可能会出问题
+  // 似乎用 fiber 可以解决这问题，因为出错的时候 dom 副作用还没产生
+  // 这样的话 fiber 可以认为是穿透 组件vdom 直达平台 vdom 再做 commit 的逻辑
   error: Error;
 };
 
@@ -131,10 +143,10 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
     if (isComponent(vnode)) {
       const { type, props } = vnode;
       const instance = createInstance(props, ctx, () => {
-        const vnode = render(instance.props);
-        hooks.update?.forEach(tryCatchLog);
         let updated = true;
+        hooks.update?.forEach(tryCatchLog);
         try {
+          const vnode = render(instance.props);
           ref.renderedRef = update(ref.renderedRef, parentState, vnode, instance.ctx);
         } catch (error) {
           updated = false;
@@ -152,6 +164,22 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
       hooks.mount?.forEach(tryCatchLog);
       const renderedRef = mount(parentNode, referenceNode, parentState, renderedVnode, instance.ctx);
       hooks.mounted?.forEach(tryCatchLog);
+      // let renderedRef: Ref;
+      // let mounted = true;
+      // hooks.mount?.forEach(tryCatchLog);
+      // try {
+      //   const renderedVnode = render(props);
+      //   renderedRef = mount(parentNode, referenceNode, parentState, renderedVnode, instance.ctx);
+      // } catch (error) {
+      //   mounted = false;
+      //   const hooks_error = hooks.error;
+      //   if (!hooks_error?.size) {
+      //     throw error;
+      //   }
+      //   hooks_error.forEach(fn => tryCatchLog(() => fn(error)));
+      //   renderedRef = mount(parentNode, referenceNode, parentState, null, instance.ctx);
+      // }
+      // mounted && hooks.mounted?.forEach(tryCatchLog);
       const ref = {
         type: RefType.MAGALETA as const,
         vnode,
@@ -633,9 +661,30 @@ export function createMagaleta<N, S>(env: Env<N, S>) {
     // }
     if (isComponent(vnode) && isComponent(ref.vnode) && vnode.type === ref.vnode.type) {
       const rm = ref as MagaletaRef<N, S>;
-      const renderedVnode = rm.render(vnode.props);
-      rm.renderedRef = update(rm.renderedRef, parentState, renderedVnode, rm.instance.ctx);
+      // rm.instance.props = vnode.props;
+      // rm.instance.update(); // 不能省，因为 update 是异步的，得暴露 doUpdate
+      // rm.vnode = vnode;
+      const { instance, render } = rm;
+      const hooks = instance[symbol];
+      instance.props = vnode.props;
+      let updated = true;
+      hooks.update?.forEach(tryCatchLog);
+      try {
+        const vnode = render(instance.props);
+        rm.renderedRef = update(rm.renderedRef, parentState, vnode, instance.ctx);
+      } catch (error) {
+        updated = false;
+        const hooks_error = hooks.error;
+        if (!hooks_error?.size) {
+          throw error;
+        }
+        hooks_error.forEach(fn => tryCatchLog(() => fn(error)));
+      }
+      updated && hooks.updated?.forEach(tryCatchLog);
       rm.vnode = vnode;
+      // const renderedVnode = rm.render(vnode.props);
+      // rm.renderedRef = update(rm.renderedRef, parentState, renderedVnode, rm.instance.ctx);
+      // rm.vnode = vnode;
       return rm;
     }
     {
