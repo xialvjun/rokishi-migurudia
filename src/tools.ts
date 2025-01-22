@@ -12,7 +12,7 @@ export const queueMacrotask =
 const gt = globalThis || window;
 export const queueMicrotask =
   typeof gt?.queueMicrotask !== 'undefined'
-    ? gt.queueMicrotask
+    ? gt.queueMicrotask.bind(gt)
     : typeof Promise !== 'undefined'
     ? (cb: VoidFunction) => Promise.resolve().then(cb)
     : () => {

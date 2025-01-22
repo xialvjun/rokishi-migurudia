@@ -202,7 +202,7 @@ type EffectFlush = 'sync' | 'pre' | 'post';
 export function effect(fn: () => unknown | (() => unknown), flush: EffectFlush = 'pre') {
   const sig = new SignalEffect(fn, flush);
   const revoke = () => sig.revoke();
-  revoke[symbol] = sig;
+  // (revoke as any)[symbol] = sig;
   return revoke;
 }
 
@@ -249,13 +249,7 @@ export function defineComponent<P extends {} = any, C extends {} = any>(type: Co
   const newType = (initProps: any, ins: any) => {
     const render = type(initProps, ins);
     const vnode = computed(() => render(ins.props));
-    ins.on(
-      'unmount',
-      effect(() => {
-        vnode.value;
-        ins.update();
-      })
-    );
+    ins.on('unmount', watch(vnode, () => ins.update()));
     // return () => vnode.value;
     // 可能有用户改变对象内部属性，此时 computed 仍会返回旧 cache，除非用 computed.force ，但那跟原函数就没区别了
     return render;

@@ -41,8 +41,5 @@
   "devDependencies": {
     "typescript": "^5.0.4",
     "unbuild": "^1.2.1"
-  },
-  "dependencies": {
-    "signal-polyfill": "^0.2.2"
   }
 }
