@@ -55,7 +55,7 @@ namespace signal {
     cache: T = undefined!;
     states = new Map<State, number>();
     computeds = new Map<Computed, number>();
-    temp_dirty = true;
+    temp_dirty = true; // is_sure_dirty
     version = 0;
     constructor(fn: () => T) {
       this.fn = fn;
@@ -124,10 +124,9 @@ namespace signal {
         this.computeds = old_computeds;
         // 这里 throw 掉，可以保证 this.track() 时一定 !isDirty()
         throw error;
-      } finally {
-        CURRENT_COMPUTED = old;
-        return this.track();
       }
+      CURRENT_COMPUTED = old;
+      return this.track();
     }
   }
 
@@ -161,6 +160,7 @@ namespace signal {
     run() {
       do_tasks[this.flush](() => this.computed.get());
     }
+    // todo: 这个 states 可以不要，可以直接计算出来，就是 this.computed.states + this.computed.computeds(递归).states ...不过放一个也没问题，甚至更保险
     states = new Set<State>();
     // memory_states = new Set<State>();
     // computeds = new Map<Computed, number>();

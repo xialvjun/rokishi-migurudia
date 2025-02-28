@@ -48,19 +48,26 @@ function styleX(value: any) {
 }
 
 function setDOMAttribute(node: DomElement, key: string, value: any, namespace: string) {
-  if (value === true) {
-    node.setAttribute(key, '');
-  } else if (value === false) {
-    node.removeAttribute(key);
-  } else if (namespace) {
-    node.setAttributeNS(namespace, key, value);
-  } else {
-    if (key === 'className') {
-      key = 'class';
-    }
-    value = key === 'class' ? classX(value) : key === 'style' ? styleX(value) : value;
-    node.setAttribute(key, value);
-  }
+  // if (value === false) {
+  //   namespace ? node.removeAttributeNS(namespace, key) : node.removeAttribute(key);
+  //   return;
+  // }
+  // if (key === 'className') key = 'class';
+  if (value === false) return node.removeAttribute(key);
+  if (key === 'className') key = 'class';
+  value = value === true ? '' : key === 'class' ? classX(value) : key === 'style' ? styleX(value) : value;
+  return node.setAttribute(key, value);
+  // if (value === true) {
+  //   node.setAttribute(key, '');
+  // } else if (value === false) {
+  //   node.removeAttribute(key);
+  // // } else if (namespace) {
+  // //   node.setAttributeNS(namespace, key, value);
+  // } else {
+  //   if (key === 'className') key = 'class';
+  //   value = key === 'class' ? classX(value) : key === 'style' ? styleX(value) : value;
+  //   node.setAttribute(key, value);
+  // }
 }
 
 function makeSpecialAttr(key: string, fn = (n: any, k: any, v: any) => (n[k] = v)) {
